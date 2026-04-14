@@ -32,6 +32,12 @@
   --color-green-tint:        rgba(30, 107, 69, 0.07);
   --color-green-tint-border: rgba(30, 107, 69, 0.20);
 
+  /* Синие — для фриджа / корзины */
+  --color-blue-text:   #0284c7;
+  --color-blue-tint:   rgba(2, 132, 199, 0.08);
+  --color-blue-light:  #7dd3fc;
+  --color-blue-border: #bae6fd;
+
   /* Макронутриенты */
   --color-macro-protein: #4A7FC1;
   --color-macro-fat:     #E07B39;
@@ -156,6 +162,12 @@ h3 { font-size: clamp(18px, 2.5vw, 24px); font-weight: 600; line-height: 1.35; }
     --shadow-card:  0 1px 3px rgba(0,0,0,0.35), 0 4px 16px rgba(0,0,0,0.25);
     --shadow-hover: 0 4px 10px rgba(0,0,0,0.4), 0 10px 28px rgba(0,0,0,0.3);
 
+    /* Синие — тёмная тема */
+    --color-blue-text:   #38bdf8;
+    --color-blue-tint:   rgba(56, 189, 248, 0.10);
+    --color-blue-light:  #7dd3fc;
+    --color-blue-border: rgba(56, 189, 248, 0.25);
+
     /* Категории — светлее для тёмной темы */
     --cat-meat-text:      #E09060;
     --cat-dairy-text:     #C8A050;
@@ -178,6 +190,12 @@ h3 { font-size: clamp(18px, 2.5vw, 24px); font-weight: 600; line-height: 1.35; }
   --color-green-tint-border: rgba(77, 168, 124, 0.25);
   --shadow-card:  0 1px 3px rgba(0,0,0,0.35), 0 4px 16px rgba(0,0,0,0.25);
   --shadow-hover: 0 4px 10px rgba(0,0,0,0.4), 0 10px 28px rgba(0,0,0,0.3);
+
+  /* Синие — тёмная тема */
+  --color-blue-text:   #38bdf8;
+  --color-blue-tint:   rgba(56, 189, 248, 0.10);
+  --color-blue-light:  #7dd3fc;
+  --color-blue-border: rgba(56, 189, 248, 0.25);
 
   /* Категории — светлее для тёмной темы */
   --cat-meat-text:      #E09060;

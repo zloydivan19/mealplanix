@@ -4,9 +4,13 @@
   import { getWeekDays, getWeekLabel, getWeekId } from '$lib/utils/week.js';
   import { aggregateIngredients, type CartItem } from '$lib/utils/ingredients.js';
   import { SHOPPING_CATEGORY_LABELS } from '$lib/types/dish.js';
-  import type { Dish, CustomDish, FridgeRow } from '$lib/types/database.js';
+  import type { Dish, CustomDish, FridgeRow, CartState } from '$lib/types/database.js';
   import type { PageData } from './$types.js';
-  import type { CartStateRow } from './+page.server.js';
+
+  type CartStateRow = Pick<
+    CartState,
+    'ingredient_name' | 'price' | 'is_checked' | 'source' | 'qty' | 'unit' | 'category'
+  >;
 
   let { data } = $props<{ data: PageData }>();
 
@@ -47,7 +51,7 @@
   // prices: name → число
   let prices = $state<Record<string, number>>(
     Object.fromEntries(
-      (data.cartState as CartStateRow[]).filter(r => r.price > 0).map(r => [r.ingredient_name, r.price])
+      (data.cartState as CartStateRow[]).filter(r => (r.price ?? 0) > 0).map(r => [r.ingredient_name, r.price ?? 0])
     )
   );
 

@@ -44,6 +44,14 @@
 		localStorage.setItem('pm_day', String(viewDayIdx));
 		localStorage.setItem('pm_week', String(weekOffset));
 	});
+
+	// Очистка таймеров toast при уничтожении компонента
+	$effect(() => {
+		return () => {
+			if (toast?.timer) clearTimeout(toast.timer);
+			if (toast?.tickInterval) clearInterval(toast.tickInterval);
+		};
+	});
 	let weekDays = $derived(getWeekDays(weekOffset));
 	let weekLabel = $derived(getWeekLabel(weekDays));
 	let weekId = $derived(getWeekId(weekDays));
@@ -237,6 +245,389 @@
 		await page.data.supabase.from('menu_plans').delete().eq('id', row.id);
 	}
 
+	// ── Копирование недели / дня ──────────────────────────────────────────
+	type CopyTarget = 'next' | 'manual';
+
+	// Week copy
+	let showCopyWeekPopover = $state(false);
+	let copyWeekTarget = $state<CopyTarget>('next');
+	let copyWeekManual = $state('');
+	let copyWeekConfirm = $state(false);
+	let copyWeekPending = $state<{ targetWeekId: string } | null>(null);
+	let copyingWeek = $state(false);
+
+	// Day copy
+	let showCopyDayPopover = $state(false);
+	type DayCopyMode = 'tomorrow' | 'nextweek' | 'manual';
+	let copyDayMode = $state<DayCopyMode>('tomorrow');
+	let copyDayManualWeek = $state('');
+	let copyDayManualIdx = $state(0);
+	let copyDayConfirm = $state(false);
+	let copyDayPending = $state<{ targetWeekId: string; targetDayIdx: number } | null>(null);
+	let copyingDay = $state(false);
+
+	// Toast / undo
+	interface ToastState {
+		message: string;
+		insertedIds: number[];
+		timer: ReturnType<typeof setTimeout> | null;
+		secondsLeft: number;
+		tickInterval: ReturnType<typeof setInterval> | null;
+	}
+	let toast = $state<ToastState | null>(null);
+
+	function showToast(message: string, insertedIds: number[]) {
+		if (toast?.timer) clearTimeout(toast.timer);
+		if (toast?.tickInterval) clearInterval(toast.tickInterval);
+		const DURATION = 5000;
+		const timer = setTimeout(() => dismissToast(), DURATION);
+		const tickInterval = setInterval(() => {
+			if (toast) toast.secondsLeft = Math.max(0, toast.secondsLeft - 1);
+		}, 1000);
+		toast = { message, insertedIds, timer, secondsLeft: 5, tickInterval };
+	}
+
+	function dismissToast() {
+		if (toast?.timer) clearTimeout(toast.timer);
+		if (toast?.tickInterval) clearInterval(toast.tickInterval);
+		toast = null;
+	}
+
+	function showErrorToast(message: string) {
+		if (toast?.timer) clearTimeout(toast.timer);
+		if (toast?.tickInterval) clearInterval(toast.tickInterval);
+		const DURATION = 4000;
+		const timer = setTimeout(() => dismissToast(), DURATION);
+		toast = { message, insertedIds: [], timer, secondsLeft: 0, tickInterval: null };
+	}
+
+	async function undoCopy() {
+		if (!toast) return;
+		const ids = toast.insertedIds;
+		dismissToast();
+		if (ids.length === 0) return;
+		// Remove from localPlans
+		const next = new Map(localPlans);
+		for (const [k, arr] of next) {
+			const filtered = arr.filter((r) => !ids.includes(r.id));
+			if (filtered.length === 0) next.delete(k);
+			else next.set(k, filtered);
+		}
+		localPlans = next;
+		// Delete from DB
+		await page.data.supabase.from('menu_plans').delete().in('id', ids);
+	}
+
+	/** Returns week_label for offset from current weekId */
+	function offsetWeekId(baseWeekId: string, offsetWeeks: number): string {
+		// parse "2026-W15" → date of Monday → add 7*offset days
+		const match = /^(\d{4})-W(\d{2})$/.exec(baseWeekId);
+		if (!match) return baseWeekId;
+		const year = parseInt(match[1]);
+		const week = parseInt(match[2]);
+		// ISO week monday: Jan 4 is always in week 1
+		const jan4 = new Date(year, 0, 4);
+		const jan4Day = jan4.getDay() === 0 ? 7 : jan4.getDay(); // 1=Mon..7=Sun
+		const monday = new Date(jan4);
+		monday.setDate(jan4.getDate() - (jan4Day - 1) + (week - 1) * 7);
+		monday.setDate(monday.getDate() + offsetWeeks * 7);
+		return getWeekId([
+			monday,
+			...Array.from({ length: 6 }, (_, i) => {
+				const d = new Date(monday);
+				d.setDate(monday.getDate() + i + 1);
+				return d;
+			})
+		]);
+	}
+
+	/** Returns day label like "Среда, 15 апр" */
+	function dayLabelFromWeekIdx(targetWeekId: string, dayIdx: number): string {
+		const match = /^(\d{4})-W(\d{2})$/.exec(targetWeekId);
+		if (!match) return `день ${dayIdx + 1}`;
+		const year = parseInt(match[1]);
+		const week = parseInt(match[2]);
+		const jan4 = new Date(year, 0, 4);
+		const jan4Day = jan4.getDay() === 0 ? 7 : jan4.getDay();
+		const monday = new Date(jan4);
+		monday.setDate(jan4.getDate() - (jan4Day - 1) + (week - 1) * 7);
+		const d = new Date(monday);
+		d.setDate(monday.getDate() + dayIdx);
+		return `${DAY_FULL[dayIdx]}, ${d.getDate()} ${MONTH_SHORT[d.getMonth()]}`;
+	}
+
+	function hasPlansForWeek(personaId: number, wId: string): boolean {
+		for (const [key] of localPlans) {
+			if (key.startsWith(`${personaId}__${wId}__`)) return true;
+		}
+		return false;
+	}
+
+	function hasPlansForDay(personaId: number, wId: string, dayIdx: number): boolean {
+		for (const meal of MEAL_KEYS) {
+			const k = slotKey(personaId, wId, dayIdx, meal);
+			if ((localPlans.get(k) ?? []).length > 0) return true;
+		}
+		return false;
+	}
+
+	function resolveTargetWeekId(): string {
+		if (copyWeekTarget === 'next') return offsetWeekId(weekId, 1);
+		const manual = copyWeekManual.trim();
+		return /^\d{4}-W\d{2}$/.test(manual) ? manual : '';
+	}
+
+	function resolveDayCopyTarget(): { targetWeekId: string; targetDayIdx: number } | null {
+		if (copyDayMode === 'tomorrow') {
+			if (viewDayIdx < 6) return { targetWeekId: weekId, targetDayIdx: viewDayIdx + 1 };
+			return { targetWeekId: offsetWeekId(weekId, 1), targetDayIdx: 0 };
+		}
+		if (copyDayMode === 'nextweek') {
+			return { targetWeekId: offsetWeekId(weekId, 1), targetDayIdx: viewDayIdx };
+		}
+		// manual
+		const tw = copyDayManualWeek.trim();
+		if (!/^\d{4}-W\d{2}$/.test(tw)) return null;
+		const idx = Math.max(0, Math.min(6, Number(copyDayManualIdx)));
+		return { targetWeekId: tw, targetDayIdx: idx };
+	}
+
+	async function handleCopyWeekConfirmed(targetWeekId: string) {
+		if (!activePersona) return;
+		copyingWeek = true;
+		showCopyWeekPopover = false;
+		copyWeekConfirm = false;
+		copyWeekPending = null;
+		try {
+			const persona = activePersona;
+			// gather source rows
+			const sourceRows: MenuPlanRow[] = [];
+			for (const [key, rows] of localPlans) {
+				if (key.startsWith(`${persona.id}__${weekId}__`)) {
+					sourceRows.push(...rows);
+				}
+			}
+			if (sourceRows.length === 0) return;
+
+			// snapshot before mutation
+			const snapshot = new Map(localPlans);
+
+			// delete existing rows in target week for this persona
+			await page.data.supabase
+				.from('menu_plans')
+				.delete()
+				.eq('persona_id', persona.id)
+				.eq('week_label', targetWeekId);
+
+			// insert clones
+			const inserts = sourceRows.map((r) => ({
+				persona_id: persona.id,
+				week_label: targetWeekId,
+				day_index: r.day_index,
+				meal_key: r.meal_key,
+				dish_name: r.dish_name,
+				dish_photo: r.dish_photo,
+				dish_category: r.dish_category,
+				kcal: r.kcal,
+				protein: r.protein,
+				fat: r.fat,
+				carbs: r.carbs,
+				cost: r.cost,
+				grams: r.grams,
+				sort_order: r.sort_order
+			}));
+
+			const { data: inserted } = await page.data.supabase
+				.from('menu_plans')
+				.insert(inserts)
+				.select('id, day_index, meal_key, dish_name');
+
+			if (!inserted || inserted.length === 0) {
+				// restore snapshot on failure
+				localPlans = snapshot;
+				showErrorToast('Ошибка при копировании. Попробуйте ещё раз.');
+				return;
+			}
+
+			// add to localPlans
+			const next = new Map(localPlans);
+			// remove old copies in target week first
+			for (const [k] of next) {
+				if (k.startsWith(`${persona.id}__${targetWeekId}__`)) next.delete(k);
+			}
+			// track used indices per (day_index, meal_key, dish_name) to avoid double-matching
+			const usedIndices = new Map<string, number>();
+			for (const row of inserted) {
+				const groupKey = `${row.day_index}__${row.meal_key}__${row.dish_name}`;
+				const usedCount = usedIndices.get(groupKey) ?? 0;
+				const candidates = sourceRows.filter(
+					(r) =>
+						r.day_index === row.day_index &&
+						r.meal_key === row.meal_key &&
+						r.dish_name === row.dish_name
+				);
+				const src = candidates[usedCount];
+				usedIndices.set(groupKey, usedCount + 1);
+				if (!src) continue;
+				const k = slotKey(persona.id, targetWeekId, row.day_index, row.meal_key as MealKey);
+				const arr = next.get(k) ?? [];
+				arr.push({ ...src, id: row.id, week_label: targetWeekId });
+				next.set(k, arr);
+			}
+			localPlans = next;
+			showToast(
+				'Меню скопировано',
+				inserted.map((r: { id: number }) => r.id)
+			);
+
+			// navigate to target week
+			const targetDays = (() => {
+				const match = /^(\d{4})-W(\d{2})$/.exec(targetWeekId);
+				if (!match) return null;
+				const yr = parseInt(match[1]);
+				const wk = parseInt(match[2]);
+				const jan4 = new Date(yr, 0, 4);
+				const jan4Day = jan4.getDay() === 0 ? 7 : jan4.getDay();
+				const mon = new Date(jan4);
+				mon.setDate(jan4.getDate() - (jan4Day - 1) + (wk - 1) * 7);
+				return getWeekDays(0).map((_, i) => {
+					const d = new Date(mon);
+					d.setDate(mon.getDate() + i);
+					return d;
+				});
+			})();
+			if (targetDays) {
+				// compute offset from current "real" week
+				const currentMon = getWeekDays(0)[0];
+				const targetMon = targetDays[0];
+				const diffMs = targetMon.getTime() - currentMon.getTime();
+				weekOffset = Math.round(diffMs / (7 * 24 * 3600 * 1000));
+			}
+		} finally {
+			copyingWeek = false;
+		}
+	}
+
+	async function handleCopyWeek() {
+		if (!activePersona) return;
+		const targetWeekId = resolveTargetWeekId();
+		if (!targetWeekId) return;
+		if (hasPlansForWeek(activePersona.id, targetWeekId)) {
+			copyWeekPending = { targetWeekId };
+			copyWeekConfirm = true;
+			showCopyWeekPopover = false;
+			return;
+		}
+		await handleCopyWeekConfirmed(targetWeekId);
+	}
+
+	async function handleCopyDayConfirmed(targetWeekId: string, targetDayIdx: number) {
+		if (!activePersona) return;
+		copyingDay = true;
+		showCopyDayPopover = false;
+		copyDayConfirm = false;
+		copyDayPending = null;
+		try {
+			const persona = activePersona;
+			const sourceRows: MenuPlanRow[] = [];
+			for (const meal of MEAL_KEYS) {
+				const k = slotKey(persona.id, weekId, viewDayIdx, meal);
+				sourceRows.push(...(localPlans.get(k) ?? []));
+			}
+			if (sourceRows.length === 0) return;
+
+			// snapshot before mutation
+			const snapshot = new Map(localPlans);
+
+			// delete existing in target day
+			for (const meal of MEAL_KEYS) {
+				const existingRows =
+					localPlans.get(slotKey(persona.id, targetWeekId, targetDayIdx, meal)) ?? [];
+				if (existingRows.length > 0) {
+					await page.data.supabase
+						.from('menu_plans')
+						.delete()
+						.eq('persona_id', persona.id)
+						.eq('week_label', targetWeekId)
+						.eq('day_index', targetDayIdx)
+						.eq('meal_key', meal);
+				}
+			}
+
+			const inserts = sourceRows.map((r) => ({
+				persona_id: persona.id,
+				week_label: targetWeekId,
+				day_index: targetDayIdx,
+				meal_key: r.meal_key,
+				dish_name: r.dish_name,
+				dish_photo: r.dish_photo,
+				dish_category: r.dish_category,
+				kcal: r.kcal,
+				protein: r.protein,
+				fat: r.fat,
+				carbs: r.carbs,
+				cost: r.cost,
+				grams: r.grams,
+				sort_order: r.sort_order
+			}));
+
+			const { data: inserted } = await page.data.supabase
+				.from('menu_plans')
+				.insert(inserts)
+				.select('id, day_index, meal_key, dish_name');
+
+			if (!inserted || inserted.length === 0) {
+				// restore snapshot on failure
+				localPlans = snapshot;
+				showErrorToast('Ошибка при копировании. Попробуйте ещё раз.');
+				return;
+			}
+
+			const next = new Map(localPlans);
+			// remove stale target day entries
+			for (const meal of MEAL_KEYS) {
+				next.delete(slotKey(persona.id, targetWeekId, targetDayIdx, meal));
+			}
+			// track used indices per (meal_key, dish_name) to avoid double-matching
+			const usedIndices = new Map<string, number>();
+			for (const row of inserted) {
+				const groupKey = `${row.meal_key}__${row.dish_name}`;
+				const usedCount = usedIndices.get(groupKey) ?? 0;
+				const candidates = sourceRows.filter(
+					(r) => r.meal_key === row.meal_key && r.dish_name === row.dish_name
+				);
+				const src = candidates[usedCount];
+				usedIndices.set(groupKey, usedCount + 1);
+				if (!src) continue;
+				const k = slotKey(persona.id, targetWeekId, row.day_index, row.meal_key as MealKey);
+				const arr = next.get(k) ?? [];
+				arr.push({ ...src, id: row.id, week_label: targetWeekId, day_index: targetDayIdx });
+				next.set(k, arr);
+			}
+			localPlans = next;
+			showToast(
+				'День скопирован',
+				inserted.map((r: { id: number }) => r.id)
+			);
+		} finally {
+			copyingDay = false;
+		}
+	}
+
+	async function handleCopyDay() {
+		if (!activePersona) return;
+		const target = resolveDayCopyTarget();
+		if (!target) return;
+		const { targetWeekId, targetDayIdx } = target;
+		if (hasPlansForDay(activePersona.id, targetWeekId, targetDayIdx)) {
+			copyDayPending = { targetWeekId, targetDayIdx };
+			copyDayConfirm = true;
+			showCopyDayPopover = false;
+			return;
+		}
+		await handleCopyDayConfirmed(targetWeekId, targetDayIdx);
+	}
+
 	// ── Автогенерация ─────────────────────────────────────────────────────
 	let showGenConfirm = $state(false);
 	let generating = $state(false);
@@ -372,8 +763,8 @@
 	function mealAccentColor(meal: string): string {
 		const colors: Record<string, string> = {
 			bf: 'var(--color-warning)',
-			ln: '#3B82F6',
-			dn: '#818CF8',
+			ln: 'var(--color-meal-lunch)',
+			dn: 'var(--color-meal-dinner)',
 			sn: 'var(--color-green-primary)'
 		};
 		return colors[meal] ?? 'var(--color-border)';
@@ -508,7 +899,7 @@
 			</button>
 		</div>
 
-		<!-- Право: view toggle + кнопка генерации -->
+		<!-- Право: view toggle + кнопка копирования + кнопка генерации -->
 		<div class="flex shrink-0 items-center gap-2">
 			<!-- Сегментный переключатель -->
 			<div
@@ -538,6 +929,264 @@
           ">День</button
 				>
 			</div>
+
+			<!-- Кнопка «Копировать неделю» + попover -->
+			{#if viewMode === 'week'}
+				<div class="relative">
+					<button
+						type="button"
+						onclick={() => {
+							showCopyWeekPopover = !showCopyWeekPopover;
+							copyWeekTarget = 'next';
+							copyWeekManual = '';
+						}}
+						disabled={copyingWeek || !activePersona}
+						class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all"
+						style="
+              background: var(--color-bg-page);
+              border: 1px solid var(--color-border);
+              color: var(--color-text-muted);
+              opacity: {copyingWeek ? '0.6' : '1'};
+            "
+						onmouseenter={(e) => {
+							if (!copyingWeek) {
+								(e.currentTarget as HTMLElement).style.borderColor = 'var(--color-green-soft)';
+								(e.currentTarget as HTMLElement).style.color = 'var(--color-green-primary)';
+							}
+						}}
+						onmouseleave={(e) => {
+							(e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border)';
+							(e.currentTarget as HTMLElement).style.color = 'var(--color-text-muted)';
+						}}
+						aria-label="Копировать неделю"
+					>
+						{#if copyingWeek}
+							<span
+								class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"
+							></span>
+						{:else}
+							<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+								<rect
+									x="1"
+									y="3"
+									width="7"
+									height="8"
+									rx="1.5"
+									stroke="currentColor"
+									stroke-width="1.4"
+								/>
+								<path
+									d="M4 3V2a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H9"
+									stroke="currentColor"
+									stroke-width="1.4"
+									stroke-linecap="round"
+								/>
+							</svg>
+						{/if}
+						Копировать
+					</button>
+
+					{#if showCopyWeekPopover}
+						<!-- backdrop -->
+						<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+						<div class="fixed inset-0 z-40" onclick={() => (showCopyWeekPopover = false)}></div>
+						<div
+							class="absolute top-full right-0 z-50 mt-1.5 rounded-xl p-4 shadow-lg"
+							style="width: 240px; background: var(--color-bg-card); border: 1px solid var(--color-border); box-shadow: var(--shadow-modal);"
+						>
+							<p class="mb-3 text-xs font-semibold" style="color: var(--color-text-primary);">
+								Скопировать на:
+							</p>
+							<label
+								class="mb-2 flex cursor-pointer items-center gap-2 text-xs"
+								style="color: var(--color-text-primary);"
+							>
+								<input
+									type="radio"
+									bind:group={copyWeekTarget}
+									value="next"
+									class="accent-green-700"
+								/>
+								Следующая неделя
+								<span class="ml-auto font-mono text-xs" style="color: var(--color-text-muted);"
+									>{offsetWeekId(weekId, 1)}</span
+								>
+							</label>
+							<label
+								class="mb-3 flex cursor-pointer items-center gap-2 text-xs"
+								style="color: var(--color-text-primary);"
+							>
+								<input
+									type="radio"
+									bind:group={copyWeekTarget}
+									value="manual"
+									class="accent-green-700"
+								/>
+								Ввести вручную
+							</label>
+							{#if copyWeekTarget === 'manual'}
+								<input
+									type="text"
+									bind:value={copyWeekManual}
+									placeholder="2026-W16"
+									class="mb-3 w-full rounded-lg px-3 py-1.5 text-xs"
+									style="border: 1px solid var(--color-border); background: var(--color-bg-input); color: var(--color-text-primary); outline: none;"
+								/>
+							{/if}
+							<button
+								type="button"
+								onclick={handleCopyWeek}
+								disabled={copyWeekTarget === 'manual' &&
+									!/^\d{4}-W\d{2}$/.test(copyWeekManual.trim())}
+								class="w-full rounded-lg py-1.5 text-xs font-semibold transition-colors"
+								style="background: var(--color-green-dark); color: var(--color-text-inverse); opacity: {copyWeekTarget ===
+									'manual' && !/^\d{4}-W\d{2}$/.test(copyWeekManual.trim())
+									? '0.5'
+									: '1'};">Скопировать</button
+							>
+						</div>
+					{/if}
+				</div>
+			{/if}
+
+			<!-- Кнопка «Копировать день» (day mode) -->
+			{#if viewMode === 'day'}
+				<div class="relative">
+					<button
+						type="button"
+						onclick={() => {
+							showCopyDayPopover = !showCopyDayPopover;
+							copyDayMode = 'tomorrow';
+							copyDayManualWeek = '';
+							copyDayManualIdx = viewDayIdx;
+						}}
+						disabled={copyingDay || !activePersona}
+						class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all"
+						style="
+              background: var(--color-bg-page);
+              border: 1px solid var(--color-border);
+              color: var(--color-text-muted);
+              opacity: {copyingDay ? '0.6' : '1'};
+            "
+						onmouseenter={(e) => {
+							if (!copyingDay) {
+								(e.currentTarget as HTMLElement).style.borderColor = 'var(--color-green-soft)';
+								(e.currentTarget as HTMLElement).style.color = 'var(--color-green-primary)';
+							}
+						}}
+						onmouseleave={(e) => {
+							(e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border)';
+							(e.currentTarget as HTMLElement).style.color = 'var(--color-text-muted)';
+						}}
+						aria-label="Копировать день"
+					>
+						{#if copyingDay}
+							<span
+								class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"
+							></span>
+						{:else}
+							<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+								<rect
+									x="1"
+									y="3"
+									width="7"
+									height="8"
+									rx="1.5"
+									stroke="currentColor"
+									stroke-width="1.4"
+								/>
+								<path
+									d="M4 3V2a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H9"
+									stroke="currentColor"
+									stroke-width="1.4"
+									stroke-linecap="round"
+								/>
+							</svg>
+						{/if}
+						Копировать день
+					</button>
+
+					{#if showCopyDayPopover}
+						<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+						<div class="fixed inset-0 z-40" onclick={() => (showCopyDayPopover = false)}></div>
+						<div
+							class="absolute top-full right-0 z-50 mt-1.5 rounded-xl p-4 shadow-lg"
+							style="width: 260px; background: var(--color-bg-card); border: 1px solid var(--color-border); box-shadow: var(--shadow-modal);"
+						>
+							<p class="mb-3 text-xs font-semibold" style="color: var(--color-text-primary);">
+								Скопировать на:
+							</p>
+							<label
+								class="mb-2 flex cursor-pointer items-center gap-2 text-xs"
+								style="color: var(--color-text-primary);"
+							>
+								<input
+									type="radio"
+									bind:group={copyDayMode}
+									value="tomorrow"
+									class="accent-green-700"
+								/>
+								Завтра
+							</label>
+							<label
+								class="mb-2 flex cursor-pointer items-center gap-2 text-xs"
+								style="color: var(--color-text-primary);"
+							>
+								<input
+									type="radio"
+									bind:group={copyDayMode}
+									value="nextweek"
+									class="accent-green-700"
+								/>
+								Следующая неделя, тот же день
+							</label>
+							<label
+								class="mb-3 flex cursor-pointer items-center gap-2 text-xs"
+								style="color: var(--color-text-primary);"
+							>
+								<input
+									type="radio"
+									bind:group={copyDayMode}
+									value="manual"
+									class="accent-green-700"
+								/>
+								Ввести вручную
+							</label>
+							{#if copyDayMode === 'manual'}
+								<div class="mb-3 flex flex-col gap-2">
+									<input
+										type="text"
+										bind:value={copyDayManualWeek}
+										placeholder="Неделя: 2026-W16"
+										class="w-full rounded-lg px-3 py-1.5 text-xs"
+										style="border: 1px solid var(--color-border); background: var(--color-bg-input); color: var(--color-text-primary); outline: none;"
+									/>
+									<select
+										bind:value={copyDayManualIdx}
+										class="w-full rounded-lg px-3 py-1.5 text-xs"
+										style="border: 1px solid var(--color-border); background: var(--color-bg-input); color: var(--color-text-primary); outline: none;"
+									>
+										{#each DAY_FULL as label, i}
+											<option value={i}>{label}</option>
+										{/each}
+									</select>
+								</div>
+							{/if}
+							<button
+								type="button"
+								onclick={handleCopyDay}
+								disabled={copyDayMode === 'manual' &&
+									!/^\d{4}-W\d{2}$/.test(copyDayManualWeek.trim())}
+								class="w-full rounded-lg py-1.5 text-xs font-semibold transition-colors"
+								style="background: var(--color-green-dark); color: var(--color-text-inverse); opacity: {copyDayMode ===
+									'manual' && !/^\d{4}-W\d{2}$/.test(copyDayManualWeek.trim())
+									? '0.5'
+									: '1'};">Скопировать</button
+							>
+						</div>
+					{/if}
+				</div>
+			{/if}
 
 			<!-- Кнопка генерации -->
 			<button
@@ -1386,5 +2035,139 @@
 				>
 			</div>
 		</div>
+	</div>
+{/if}
+
+<!-- ── Подтверждение перезаписи недели ───────────────────────────────── -->
+{#if copyWeekConfirm && copyWeekPending}
+	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+	<div
+		class="fixed inset-0 flex items-center justify-center px-4"
+		style="background: var(--color-overlay); z-index: var(--z-modal);"
+		onclick={() => {
+			copyWeekConfirm = false;
+			copyWeekPending = null;
+		}}
+	>
+		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+		<div
+			class="modal-enter w-full max-w-sm"
+			style="background: var(--color-bg-card); border-radius: var(--radius-xl); box-shadow: var(--shadow-modal); padding: 28px;"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<h3 class="mb-2 font-semibold" style="font-size: 18px; color: var(--color-text-primary);">
+				Перезаписать неделю?
+			</h3>
+			<p class="mb-6 text-sm" style="color: var(--color-text-muted); line-height: 1.6;">
+				Неделя <strong>{copyWeekPending.targetWeekId}</strong> уже содержит блюда. Перезаписать?
+			</p>
+			<div class="flex justify-end gap-3">
+				<button
+					type="button"
+					onclick={() => {
+						copyWeekConfirm = false;
+						copyWeekPending = null;
+					}}
+					class="btn-secondary"
+					style="width: auto; padding: 10px 20px;">Отмена</button
+				>
+				<button
+					type="button"
+					onclick={() => {
+						const p = copyWeekPending;
+						if (p) handleCopyWeekConfirmed(p.targetWeekId);
+					}}
+					class="btn-primary"
+					style="width: auto; padding: 10px 20px;">Перезаписать</button
+				>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- ── Подтверждение перезаписи дня ──────────────────────────────────── -->
+{#if copyDayConfirm && copyDayPending}
+	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+	<div
+		class="fixed inset-0 flex items-center justify-center px-4"
+		style="background: var(--color-overlay); z-index: var(--z-modal);"
+		onclick={() => {
+			copyDayConfirm = false;
+			copyDayPending = null;
+		}}
+	>
+		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+		<div
+			class="modal-enter w-full max-w-sm"
+			style="background: var(--color-bg-card); border-radius: var(--radius-xl); box-shadow: var(--shadow-modal); padding: 28px;"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<h3 class="mb-2 font-semibold" style="font-size: 18px; color: var(--color-text-primary);">
+				Перезаписать день?
+			</h3>
+			<p class="mb-6 text-sm" style="color: var(--color-text-muted); line-height: 1.6;">
+				День <strong
+					>{dayLabelFromWeekIdx(copyDayPending.targetWeekId, copyDayPending.targetDayIdx)}</strong
+				> уже заполнен. Перезаписать?
+			</p>
+			<div class="flex justify-end gap-3">
+				<button
+					type="button"
+					onclick={() => {
+						copyDayConfirm = false;
+						copyDayPending = null;
+					}}
+					class="btn-secondary"
+					style="width: auto; padding: 10px 20px;">Отмена</button
+				>
+				<button
+					type="button"
+					onclick={() => {
+						const p = copyDayPending;
+						if (p) handleCopyDayConfirmed(p.targetWeekId, p.targetDayIdx);
+					}}
+					class="btn-primary"
+					style="width: auto; padding: 10px 20px;">Перезаписать</button
+				>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- ── Toast (undo) ───────────────────────────────────────────────────── -->
+{#if toast}
+	<div
+		class="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl px-4 py-3 shadow-lg"
+		style="background: var(--color-text-primary); color: var(--color-text-inverse); min-width: 260px; max-width: 400px; box-shadow: var(--shadow-modal);"
+	>
+		<span class="flex-1 text-sm font-medium">{toast.message}</span>
+		<button
+			type="button"
+			onclick={undoCopy}
+			class="rounded-lg px-3 py-1 text-xs font-semibold transition-colors"
+			style="background: var(--color-toast-action-bg); color: var(--color-text-inverse);"
+			onmouseenter={(e) => {
+				(e.currentTarget as HTMLElement).style.background = 'var(--color-toast-action-hover)';
+			}}
+			onmouseleave={(e) => {
+				(e.currentTarget as HTMLElement).style.background = 'var(--color-toast-action-bg)';
+			}}>Отменить ({toast.secondsLeft})</button
+		>
+		<button
+			type="button"
+			onclick={dismissToast}
+			class="flex h-5 w-5 items-center justify-center rounded-full transition-colors"
+			style="color: var(--color-toast-close);"
+			aria-label="Закрыть"
+		>
+			<svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+				<path
+					d="M1 1l8 8M9 1L1 9"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+				/>
+			</svg>
+		</button>
 	</div>
 {/if}

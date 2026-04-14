@@ -1,0 +1,19 @@
+{
+  "load_custom_agents": true,
+  "auto_load_agents": false,
+  "skillOverrides": {
+    "netlify-skills:netlify-ai-gateway": "off",
+    "netlify-skills:netlify-blobs": "off",
+    "netlify-skills:netlify-caching": "off",
+    "netlify-skills:netlify-cli-and-deploy": "off",
+    "netlify-skills:netlify-config": "off",
+    "netlify-skills:netlify-db": "off",
+    "netlify-skills:netlify-deploy": "off",
+    "netlify-skills:netlify-edge-functions": "off",
+    "netlify-skills:netlify-forms": "off",
+    "netlify-skills:netlify-frameworks": "off",
+    "netlify-skills:netlify-functions": "off",
+    "netlify-skills:netlify-identity": "off",
+    "netlify-skills:netlify-image-cdn": "off"
+  }
+}

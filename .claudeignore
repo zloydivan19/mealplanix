@@ -1,0 +1,76 @@
+# =========================
+# Dependencies
+# =========================
+node_modules
+
+# =========================
+# Build artifacts
+# =========================
+.svelte-kit
+build
+.netlify
+.vite
+
+# =========================
+# Generated / cache
+# =========================
+.cache
+.temp
+tmp
+structure.txt
+
+# =========================
+# Logs
+# =========================
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# =========================
+# Environment secrets
+# =========================
+.env
+.env.local
+.env.*.local
+
+# =========================
+# Lock files (обычно не нужны для анализа)
+# =========================
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# =========================
+# Large datasets
+# =========================
+dataset
+*.csv
+*.csv.zip
+*.zip
+
+# =========================
+# Assets / binary images
+# =========================
+brandbook
+photodishes
+pic
+static
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.ico
+
+# =========================
+# Historical docs (user stories + migrations)
+# =========================
+docs/us-*.md
+docs/*.sql
+
+# =========================
+# System files
+# =========================
+.DS_Store
+Thumbs.db

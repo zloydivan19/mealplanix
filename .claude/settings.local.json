@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Read(//c/Users/Billi/.claude/**)",
+      "Bash(mv PROJECT.md architecture/)",
+      "Bash(mv database-architecture.md architecture/)",
+      "Bash(mv meal_planning_entities_spec_v3.md architecture/)",
+      "Bash(mv schema-v5.sql database/)",
+      "Bash(mv migration-add-ingredient-qty.sql database/migrations/)",
+      "Bash(mv product_recomendation.md strategy.md)",
+      "Bash(rm backlog.md)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Billi\\.claude",
+      "d:\\sites\\Planmeal-v5\\src\\routes\\settings"
+    ]
+  }
+}

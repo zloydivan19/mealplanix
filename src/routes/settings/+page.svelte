@@ -6,9 +6,48 @@
 	import type { Persona, ActivityLevel, Formula, Gender } from '$lib/types/database.js';
 
 	let persona = $derived(page.data.persona as Persona | null);
+	let personas = $derived(page.data.personas as Persona[]);
+	let currentUserId = $derived(page.data.user?.id as string | undefined);
 	let saving = $state(false);
 	let saved = $state(false);
 	let errorMsg = $state('');
+
+	// ── Создание персоны ──────────────────────────────────────
+	let showCreateForm = $state(false);
+	let newPersonaName = $state('');
+	let newPersonaNoAccount = $state(false);
+	let creating = $state(false);
+	let createError = $state('');
+	let createSuccess = $state(false);
+
+	// ── Удаление персоны ──────────────────────────────────────
+	let deletingId = $state<number | null>(null);
+	let deleteError = $state('');
+
+	// ── Редактирование локальной персоны ──────────────────────
+	let editingLocalPersonaId = $state<number | null>(null);
+	let editName = $state('');
+	let editKcal = $state<number | ''>('');
+	let editProtein = $state<number | ''>('');
+	let editFat = $state<number | ''>('');
+	let editCarbs = $state<number | ''>('');
+	let editSaving = $state(false);
+	let editError = $state('');
+
+	function openEditForm(p: Persona) {
+		editingLocalPersonaId = p.id;
+		editName = p.name;
+		editKcal = p.kcal_target ?? '';
+		editProtein = p.protein_target ?? '';
+		editFat = p.fat_target ?? '';
+		editCarbs = p.carbs_target ?? '';
+		editError = '';
+	}
+
+	function closeEditForm() {
+		editingLocalPersonaId = null;
+		editError = '';
+	}
 
 	// ── Безопасность ─────────────────────────────────────────
 	let pwNew = $state('');
@@ -167,6 +206,479 @@
 	</div>
 
 	<div class="mx-auto w-full max-w-lg px-4 py-6">
+		<!-- ── РАЗДЕЛ: Персоны домохозяйства ────────────────────── -->
+		<div
+			class="mb-4 flex flex-col gap-0"
+			style="background: var(--color-bg-card); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); border: 1px solid var(--color-border); overflow: hidden;"
+		>
+			<div class="px-5 pt-5 pb-4">
+				<h2 class="mb-1 font-semibold" style="font-size: 16px; color: var(--color-text-primary);">
+					Участники
+				</h2>
+				<p class="text-sm" style="color: var(--color-text-muted);">Персоны в твоём домохозяйстве</p>
+			</div>
+
+			<!-- Список персон -->
+			{#each personas as p (p.id)}
+				{@const isLocal = p.user_id === null}
+				{@const canManage = isLocal && p.created_by_user_id === currentUserId}
+				{@const isActive = p.id === persona?.id}
+				{@const isEditing = editingLocalPersonaId === p.id}
+				<div style="border-top: 1px solid var(--color-border);">
+					<!-- Строка персоны -->
+					<div style="padding: 12px 20px; display: flex; align-items: center; gap: 12px;">
+						<!-- Аватар -->
+						<div
+							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold"
+							style="background: {isActive
+								? 'var(--color-green-primary)'
+								: 'var(--color-border)'}; color: {isActive
+								? 'var(--color-text-inverse)'
+								: 'var(--color-text-muted)'};"
+						>
+							{p.name.trim()[0]?.toUpperCase() ?? '?'}
+						</div>
+
+						<!-- Имя + бейдж -->
+						<div class="flex min-w-0 flex-1 flex-col gap-0.5">
+							<span class="truncate text-sm font-semibold" style="color: var(--color-text-primary);"
+								>{p.name}</span
+							>
+							{#if isLocal}
+								<span
+									class="inline-flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-xs font-semibold"
+									style="background: var(--color-bg-page); color: var(--color-text-muted); border: 1px solid var(--color-border);"
+								>
+									<svg
+										width="10"
+										height="10"
+										viewBox="0 0 10 10"
+										fill="none"
+										style="flex-shrink:0;"
+									>
+										<circle
+											cx="5"
+											cy="5"
+											r="4"
+											stroke="currentColor"
+											stroke-width="1.4"
+											fill="none"
+										/>
+										<path
+											d="M5 3v2.5l1.5 1"
+											stroke="currentColor"
+											stroke-width="1.2"
+											stroke-linecap="round"
+										/>
+									</svg>
+									Без аккаунта
+								</span>
+							{/if}
+						</div>
+
+						<!-- Кнопка изменить (только для локальных своих) -->
+						{#if canManage}
+							<button
+								type="button"
+								onclick={() => (isEditing ? closeEditForm() : openEditForm(p))}
+								class="flex h-8 shrink-0 items-center justify-center rounded-lg px-2.5 text-xs font-semibold transition-colors"
+								style="background: {isEditing
+									? 'var(--color-green-tint)'
+									: 'transparent'}; border: 1px solid {isEditing
+									? 'var(--color-green-tint-border)'
+									: 'var(--color-border)'}; color: {isEditing
+									? 'var(--color-green-primary)'
+									: 'var(--color-text-muted)'}; cursor: pointer;"
+								aria-label="Изменить персону {p.name}"
+							>
+								Изменить
+							</button>
+						{/if}
+
+						<!-- Кнопка удалить (только для локальных своих) -->
+						{#if canManage}
+							<form
+								method="POST"
+								action="?/deletePersona"
+								use:enhance={() => {
+									deletingId = p.id;
+									deleteError = '';
+									return async ({ result, update }) => {
+										deletingId = null;
+										if (result.type === 'failure') {
+											deleteError = (result.data as { error?: string })?.error ?? 'Ошибка удаления';
+										}
+										await update();
+									};
+								}}
+							>
+								<input type="hidden" name="persona_id" value={p.id} />
+								<button
+									type="submit"
+									disabled={deletingId === p.id}
+									class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors"
+									style="background: transparent; border: 1px solid var(--color-border); color: var(--color-text-muted); cursor: pointer;"
+									onmouseenter={(e) => {
+										(e.currentTarget as HTMLElement).style.background = 'var(--color-error-bg)';
+										(e.currentTarget as HTMLElement).style.color = 'var(--color-error)';
+										(e.currentTarget as HTMLElement).style.borderColor =
+											'var(--color-error-border)';
+									}}
+									onmouseleave={(e) => {
+										(e.currentTarget as HTMLElement).style.background = 'transparent';
+										(e.currentTarget as HTMLElement).style.color = 'var(--color-text-muted)';
+										(e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border)';
+									}}
+									aria-label="Удалить персону {p.name}"
+								>
+									<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+										<path
+											d="M2 3.5h10M5.5 3.5V2.5h3v1M5.5 6v4M8.5 6v4M3 3.5l.7 7.5h6.6l.7-7.5"
+											stroke="currentColor"
+											stroke-width="1.5"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
+									</svg>
+								</button>
+							</form>
+						{/if}
+					</div>
+
+					<!-- Форма редактирования локальной персоны -->
+					{#if isEditing}
+						<form
+							method="POST"
+							action="?/updateLocalPersona"
+							use:enhance={() => {
+								editSaving = true;
+								editError = '';
+								return async ({ result, update }) => {
+									editSaving = false;
+									if (result.type === 'success') {
+										closeEditForm();
+										await update();
+									} else if (result.type === 'failure') {
+										const d = result.data as { updateError?: string } | undefined;
+										editError = d?.updateError ?? 'Ошибка сохранения';
+									}
+								};
+							}}
+							class="flex flex-col gap-3"
+							style="padding: 0 20px 16px; background: var(--color-bg-page);"
+						>
+							<input type="hidden" name="persona_id" value={p.id} />
+
+							<!-- Имя -->
+							<div>
+								<label
+									for="edit-name-{p.id}"
+									class="mb-1.5 block text-xs font-semibold"
+									style="color: var(--color-text-primary);">Имя</label
+								>
+								<input
+									id="edit-name-{p.id}"
+									name="name"
+									type="text"
+									bind:value={editName}
+									placeholder="Например: Иван"
+									required
+									class="brand-input"
+								/>
+							</div>
+
+							<!-- КБЖУ -->
+							<div>
+								<p class="mb-2 text-xs font-semibold" style="color: var(--color-text-primary);">
+									Цели КБЖУ (необязательно)
+								</p>
+								<div class="grid grid-cols-4 gap-2">
+									<div>
+										<label
+											for="edit-kcal-{p.id}"
+											class="mb-1 block text-xs"
+											style="color: var(--color-text-muted);">Ккал</label
+										>
+										<input
+											id="edit-kcal-{p.id}"
+											name="kcal_target"
+											type="number"
+											bind:value={editKcal}
+											min="500"
+											max="9999"
+											placeholder="2000"
+											class="brand-input"
+											style="padding: 8px;"
+										/>
+									</div>
+									<div>
+										<label
+											for="edit-protein-{p.id}"
+											class="mb-1 block text-xs"
+											style="color: var(--color-text-muted);">Белки (г)</label
+										>
+										<input
+											id="edit-protein-{p.id}"
+											name="protein_target"
+											type="number"
+											bind:value={editProtein}
+											min="0"
+											max="999"
+											placeholder="150"
+											class="brand-input"
+											style="padding: 8px;"
+										/>
+									</div>
+									<div>
+										<label
+											for="edit-fat-{p.id}"
+											class="mb-1 block text-xs"
+											style="color: var(--color-text-muted);">Жиры (г)</label
+										>
+										<input
+											id="edit-fat-{p.id}"
+											name="fat_target"
+											type="number"
+											bind:value={editFat}
+											min="0"
+											max="999"
+											placeholder="70"
+											class="brand-input"
+											style="padding: 8px;"
+										/>
+									</div>
+									<div>
+										<label
+											for="edit-carbs-{p.id}"
+											class="mb-1 block text-xs"
+											style="color: var(--color-text-muted);">Углев. (г)</label
+										>
+										<input
+											id="edit-carbs-{p.id}"
+											name="carbs_target"
+											type="number"
+											bind:value={editCarbs}
+											min="0"
+											max="999"
+											placeholder="250"
+											class="brand-input"
+											style="padding: 8px;"
+										/>
+									</div>
+								</div>
+							</div>
+
+							{#if editError}
+								<p
+									class="rounded-lg px-3 py-2 text-sm"
+									style="color: var(--color-error); background: var(--color-error-bg); border: 1px solid var(--color-error-border);"
+								>
+									{editError}
+								</p>
+							{/if}
+
+							<div class="flex gap-2">
+								<button
+									type="submit"
+									disabled={editSaving}
+									class="btn-primary"
+									style="width: auto; padding: 8px 20px;"
+								>
+									{editSaving ? 'Сохраняем...' : 'Сохранить'}
+								</button>
+								<button
+									type="button"
+									onclick={closeEditForm}
+									class="btn-ghost"
+									style="padding: 8px 16px;"
+								>
+									Отмена
+								</button>
+							</div>
+						</form>
+					{/if}
+				</div>
+			{/each}
+
+			{#if deleteError}
+				<p
+					class="mx-5 mb-3 rounded-lg px-3 py-2 text-sm"
+					style="color: var(--color-error); background: var(--color-error-bg); border: 1px solid var(--color-error-border);"
+				>
+					{deleteError}
+				</p>
+			{/if}
+
+			<!-- Кнопка добавить персону -->
+			<div style="border-top: 1px solid var(--color-border); padding: 12px 20px;">
+				{#if createSuccess}
+					<p
+						class="mb-2 flex items-center gap-1.5 text-sm font-semibold"
+						style="color: var(--color-success);"
+					>
+						<svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0;"
+							><path
+								d="M2 7l3.5 3.5 6.5-6"
+								stroke="currentColor"
+								stroke-width="1.8"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							/></svg
+						>
+						Персона создана
+					</p>
+				{/if}
+				{#if !showCreateForm}
+					<button
+						type="button"
+						onclick={() => {
+							showCreateForm = true;
+							newPersonaName = '';
+							newPersonaNoAccount = false;
+							createError = '';
+						}}
+						class="flex items-center gap-2 text-sm font-semibold transition-colors"
+						style="background: none; border: none; padding: 0; cursor: pointer; color: var(--color-green-primary);"
+					>
+						<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+							<path
+								d="M8 3v10M3 8h10"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+							/>
+						</svg>
+						Добавить персону
+					</button>
+				{:else}
+					<form
+						method="POST"
+						action="?/createPersona"
+						use:enhance={() => {
+							creating = true;
+							createError = '';
+							return async ({ result, update }) => {
+								creating = false;
+								if (result.type === 'success') {
+									createSuccess = true;
+									showCreateForm = false;
+									newPersonaName = '';
+									newPersonaNoAccount = false;
+									setTimeout(() => (createSuccess = false), 2500);
+								} else if (result.type === 'failure') {
+									createError = (result.data as { createError?: string })?.createError ?? 'Ошибка';
+								}
+								await update();
+							};
+						}}
+						class="flex flex-col gap-3"
+					>
+						<!-- Имя -->
+						<div>
+							<label
+								for="new-persona-name"
+								class="mb-1.5 block text-xs font-semibold"
+								style="color: var(--color-text-primary);">Имя</label
+							>
+							<input
+								id="new-persona-name"
+								name="name"
+								type="text"
+								bind:value={newPersonaName}
+								placeholder="Например: Иван"
+								required
+								class="brand-input"
+							/>
+						</div>
+
+						<!-- Тумблер «Без аккаунта» -->
+						<div
+							style="border-radius: var(--radius-lg); border: 1px solid {newPersonaNoAccount
+								? 'var(--color-green-tint-border)'
+								: 'var(--color-border)'}; overflow: hidden; transition: border-color var(--transition-fast);"
+						>
+							<button
+								type="button"
+								onclick={() => (newPersonaNoAccount = !newPersonaNoAccount)}
+								class="flex w-full items-center gap-3 px-4 py-3"
+								style="background: {newPersonaNoAccount
+									? 'var(--color-green-tint)'
+									: 'var(--color-bg-page)'}; border: none; cursor: pointer; transition: background var(--transition-fast);"
+							>
+								<div
+									class="relative h-6 w-10 shrink-0 rounded-full"
+									style="background: {newPersonaNoAccount
+										? 'var(--color-green-primary)'
+										: 'var(--color-border)'}; transition: background var(--transition-fast);"
+								>
+									<span
+										class="absolute top-1 block h-4 w-4 rounded-full shadow"
+										style="background: var(--color-text-inverse); transform: translateX({newPersonaNoAccount
+											? '20px'
+											: '4px'}); transition: transform var(--transition-fast);"
+									></span>
+								</div>
+								<div class="text-left">
+									<p
+										class="text-sm font-semibold"
+										style="color: {newPersonaNoAccount
+											? 'var(--color-green-primary)'
+											: 'var(--color-text-primary)'};"
+									>
+										Без аккаунта
+									</p>
+								</div>
+							</button>
+							<div class="px-4 pt-1 pb-3">
+								<p class="text-xs" style="color: var(--color-text-muted); line-height: 1.5;">
+									{#if newPersonaNoAccount}
+										Персона для члена семьи без аккаунта. Настройки КБЖУ можно задать после
+										создания.
+									{:else}
+										Персона будет привязана к твоему аккаунту.
+									{/if}
+								</p>
+							</div>
+						</div>
+
+						<!-- Скрытое поле флага -->
+						<input type="hidden" name="no_account" value={newPersonaNoAccount ? '1' : '0'} />
+
+						{#if createError}
+							<p
+								class="rounded-lg px-3 py-2 text-sm"
+								style="color: var(--color-error); background: var(--color-error-bg); border: 1px solid var(--color-error-border);"
+							>
+								{createError}
+							</p>
+						{/if}
+
+						<div class="flex gap-2">
+							<button
+								type="submit"
+								disabled={creating}
+								class="btn-primary"
+								style="width: auto; padding: 8px 20px;"
+							>
+								{creating ? 'Создаём...' : 'Создать'}
+							</button>
+							<button
+								type="button"
+								onclick={() => {
+									showCreateForm = false;
+									createError = '';
+								}}
+								class="btn-ghost"
+								style="padding: 8px 16px;"
+							>
+								Отмена
+							</button>
+						</div>
+					</form>
+				{/if}
+			</div>
+		</div>
+
 		{#if persona}
 			<div class="flex flex-col gap-4">
 				<!-- ── РАЗДЕЛ: Профиль ──────────────────────────────── -->

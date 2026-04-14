@@ -156,6 +156,20 @@ export interface HouseholdJoinRequest {
 	created_at: string;
 }
 
+export interface CartState {
+	id: number;
+	household_id: string;
+	week_label: string;
+	ingredient_name: string;
+	price: number | null;
+	is_checked: boolean;
+	updated_at: string;
+	source: string;
+	qty: number | null;
+	unit: string | null;
+	category: string | null;
+}
+
 // ── Тип Database для Supabase клиента ────────────────────────
 
 // Вспомогательный тип: делает интерфейс совместимым с Record<string, unknown>
@@ -217,6 +231,12 @@ export interface Database {
 				Row: AsRecord<HouseholdJoinRequest>;
 				Insert: AsRecord<Omit<HouseholdJoinRequest, 'id' | 'created_at'>>;
 				Update: AsRecord<Partial<Omit<HouseholdJoinRequest, 'id'>>>;
+				Relationships: [];
+			};
+			cart_state: {
+				Row: AsRecord<CartState>;
+				Insert: AsRecord<Omit<CartState, 'id' | 'updated_at'>>;
+				Update: AsRecord<Partial<Omit<CartState, 'id' | 'household_id'>>>;
 				Relationships: [];
 			};
 		};

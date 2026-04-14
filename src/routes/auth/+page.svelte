@@ -21,8 +21,14 @@
 		loading = true;
 		const { error } = await data.supabase.auth.signInWithPassword({ email, password });
 		loading = false;
-		if (error) errorMsg = getErrorMessage(error.message);
-		else window.location.replace('/');
+		if (error) {
+			errorMsg = getErrorMessage(error.message);
+		} else {
+			const params = new URLSearchParams(window.location.search);
+			const raw = params.get('redirect') ?? '/';
+			const to = raw.startsWith('/') && !raw.startsWith('//') ? raw : '/';
+			window.location.replace(to);
+		}
 	}
 
 	async function handleRegister() {
@@ -30,8 +36,14 @@
 		loading = true;
 		const { error } = await data.supabase.auth.signUp({ email, password });
 		loading = false;
-		if (error) errorMsg = getErrorMessage(error.message);
-		else window.location.replace('/');
+		if (error) {
+			errorMsg = getErrorMessage(error.message);
+		} else {
+			const params = new URLSearchParams(window.location.search);
+			const raw = params.get('redirect') ?? '/';
+			const to = raw.startsWith('/') && !raw.startsWith('//') ? raw : '/';
+			window.location.replace(to);
+		}
 	}
 
 	async function handleForgot() {

@@ -3,7 +3,14 @@
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { calcKbju, ACTIVITY_LABELS } from '$lib/utils/kbju.js';
-	import type { Persona, ActivityLevel, Formula, Gender } from '$lib/types/database.js';
+	import type {
+		Persona,
+		ActivityLevel,
+		Formula,
+		Gender,
+		HouseholdMember,
+		HouseholdJoinRequest
+	} from '$lib/types/database.js';
 
 	let persona = $derived(page.data.persona as Persona | null);
 	let personas = $derived(page.data.personas as Persona[]);
@@ -55,6 +62,50 @@
 	let pwSaving = $state(false);
 	let pwSuccess = $state(false);
 	let pwError = $state('');
+
+	// ── Моя семья ─────────────────────────────────────────────
+	let members = $derived(page.data.members as HouseholdMember[]);
+	let pendingRequests = $derived(page.data.pendingRequests as HouseholdJoinRequest[]);
+	let isOwner = $derived(page.data.isOwner as boolean);
+	let familyError = $state('');
+	let inviteCodeState = $state((page.data.household?.invite_code as string | undefined) ?? '');
+	let copyCodeSuccess = $state(false);
+	let copyLinkSuccess = $state(false);
+	let copyCodeTimer = $state<ReturnType<typeof setTimeout> | null>(null);
+	let copyLinkTimer = $state<ReturnType<typeof setTimeout> | null>(null);
+	let savedTimer = $state<ReturnType<typeof setTimeout> | null>(null);
+	let createSuccessTimer = $state<ReturnType<typeof setTimeout> | null>(null);
+	let pwSuccessTimer = $state<ReturnType<typeof setTimeout> | null>(null);
+
+	$effect(() => {
+		if (page.data.household?.invite_code) {
+			inviteCodeState = page.data.household.invite_code as string;
+		}
+	});
+
+	$effect(() => {
+		return () => {
+			if (copyCodeTimer) clearTimeout(copyCodeTimer);
+			if (copyLinkTimer) clearTimeout(copyLinkTimer);
+			if (savedTimer) clearTimeout(savedTimer);
+			if (createSuccessTimer) clearTimeout(createSuccessTimer);
+			if (pwSuccessTimer) clearTimeout(pwSuccessTimer);
+		};
+	});
+
+	async function copyCode() {
+		await navigator.clipboard.writeText(inviteCodeState);
+		copyCodeSuccess = true;
+		if (copyCodeTimer) clearTimeout(copyCodeTimer);
+		copyCodeTimer = setTimeout(() => { copyCodeSuccess = false; copyCodeTimer = null; }, 2000);
+	}
+
+	async function copyLink() {
+		await navigator.clipboard.writeText(`${window.location.origin}/join?code=${inviteCodeState}`);
+		copyLinkSuccess = true;
+		if (copyLinkTimer) clearTimeout(copyLinkTimer);
+		copyLinkTimer = setTimeout(() => { copyLinkSuccess = false; copyLinkTimer = null; }, 2000);
+	}
 
 	// Инициализация напрямую из SSR-данных — без вспышки при первом рендере
 	const _p = untrack(() => page.data.persona as Persona | null);
@@ -159,7 +210,8 @@
 
 		saving = false;
 		saved = true;
-		setTimeout(() => (saved = false), 2500);
+		if (savedTimer) clearTimeout(savedTimer);
+		savedTimer = setTimeout(() => { saved = false; savedTimer = null; }, 2500);
 	}
 </script>
 
@@ -564,7 +616,8 @@
 									showCreateForm = false;
 									newPersonaName = '';
 									newPersonaNoAccount = false;
-									setTimeout(() => (createSuccess = false), 2500);
+									if (createSuccessTimer) clearTimeout(createSuccessTimer);
+								createSuccessTimer = setTimeout(() => { createSuccess = false; createSuccessTimer = null; }, 2500);
 								} else if (result.type === 'failure') {
 									createError = (result.data as { createError?: string })?.createError ?? 'Ошибка';
 								}
@@ -727,7 +780,7 @@
                     background: {gender === g.val
 											? 'var(--color-green-primary)'
 											: 'var(--color-bg-card)'};
-                    color: {gender === g.val ? '#fff' : 'var(--color-text-muted)'};
+                    color: {gender === g.val ? 'var(--color-text-inverse)' : 'var(--color-text-muted)'};
                   ">{g.label}</button
 									>
 								{/each}
@@ -1124,9 +1177,8 @@
 									pwSuccess = true;
 									pwNew = '';
 									pwConfirm = '';
-									setTimeout(() => {
-										pwSuccess = false;
-									}, 3000);
+									if (pwSuccessTimer) clearTimeout(pwSuccessTimer);
+								pwSuccessTimer = setTimeout(() => { pwSuccess = false; pwSuccessTimer = null; }, 3000);
 								} else if (result.type === 'failure') {
 									pwError = (result.data as { error?: string })?.error ?? 'Ошибка';
 								}
@@ -1213,5 +1265,251 @@
 		{:else}
 			<p style="color: var(--color-text-muted);">Нет активной персоны</p>
 		{/if}
+	</div>
+
+	<!-- ── Моя семья ──────────────────────────────────────────── -->
+	<div class="mx-auto w-full max-w-2xl px-4 pb-8">
+		<div
+			class="rounded-xl p-6"
+			style="background: var(--color-bg-card); border: 1px solid var(--color-border);"
+		>
+			<h2 class="mb-4 font-semibold" style="font-size: 16px; color: var(--color-text-primary);">
+				Моя семья
+			</h2>
+
+			{#if familyError}
+				<p
+					class="mb-4 rounded-lg px-3 py-2 text-sm"
+					style="color: var(--color-error); background: var(--color-error-bg); border: 1px solid var(--color-error-border);"
+				>
+					{familyError}
+				</p>
+			{/if}
+
+			{#if isOwner}
+				<!-- Владелец: список участников -->
+				<div class="mb-5">
+					<p class="mb-2 text-xs font-semibold" style="color: var(--color-text-muted);">
+						УЧАСТНИКИ
+					</p>
+					<div class="flex flex-col gap-2">
+						{#each members as member (member.id)}
+							{@const isSelf = member.user_id === page.data.user?.id}
+							<div
+								class="flex items-center justify-between rounded-lg px-3 py-2"
+								style="background: var(--color-bg-page); border: 1px solid var(--color-border);"
+							>
+								<span class="text-sm" style="color: var(--color-text-primary);">
+									{#if isSelf}
+										{page.data.user?.email}
+										<span style="color: var(--color-text-muted);">(Вы, владелец)</span>
+									{:else}
+										Участник …{member.user_id.slice(-6)}
+									{/if}
+								</span>
+								{#if !isSelf}
+									<form
+										method="POST"
+										action="?/removeMember"
+										use:enhance={({}) => {
+											return async ({ result, update }) => {
+												await update();
+												if (result.type === 'failure') {
+													familyError = String(
+														(result.data as Record<string, unknown>)?.familyError ?? 'Ошибка'
+													);
+												}
+											};
+										}}
+									>
+										<input type="hidden" name="target_user_id" value={member.user_id} />
+										<button
+											type="submit"
+											class="text-xs font-semibold"
+											style="color: var(--color-error); background: none; border: none; cursor: pointer; padding: 4px 8px;"
+										>
+											Удалить
+										</button>
+									</form>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				</div>
+
+				<!-- Инвайт-код -->
+				<div class="mb-5">
+					<p class="mb-2 text-xs font-semibold" style="color: var(--color-text-muted);">
+						КОД ПРИГЛАШЕНИЯ
+					</p>
+					<div
+						class="mb-3 flex items-center gap-3 rounded-lg px-4 py-3"
+						style="background: var(--color-bg-page); border: 1px solid var(--color-border);"
+					>
+						<span
+							class="flex-1 font-mono text-lg font-bold tracking-widest"
+							style="color: var(--color-text-primary);"
+						>
+							{inviteCodeState}
+						</span>
+					</div>
+					<div class="flex flex-wrap gap-2">
+						<button
+							type="button"
+							onclick={copyCode}
+							class="btn-secondary text-sm"
+							style="width: auto; padding: 8px 16px;"
+						>
+							{copyCodeSuccess ? '✓ Скопировано' : 'Скопировать код'}
+						</button>
+						<button
+							type="button"
+							onclick={copyLink}
+							class="btn-secondary text-sm"
+							style="width: auto; padding: 8px 16px;"
+						>
+							{copyLinkSuccess ? '✓ Скопировано' : 'Поделиться ссылкой'}
+						</button>
+						<form
+							method="POST"
+							action="?/refreshInviteCode"
+							use:enhance={({}) => {
+								return async ({ result, update }) => {
+									await update();
+									if (
+										result.type === 'success' &&
+										(result.data as Record<string, unknown>)?.newInviteCode
+									) {
+										inviteCodeState = String(
+											(result.data as Record<string, unknown>).newInviteCode
+										);
+									}
+									if (result.type === 'failure') {
+										familyError = String(
+											(result.data as Record<string, unknown>)?.familyError ?? 'Ошибка'
+										);
+									}
+								};
+							}}
+						>
+							<button
+								type="submit"
+								class="btn-secondary text-sm"
+								style="width: auto; padding: 8px 16px;"
+							>
+								Обновить код
+							</button>
+						</form>
+					</div>
+				</div>
+
+				<!-- Заявки на вступление -->
+				{#if pendingRequests.length > 0}
+					<div>
+						<p class="mb-2 text-xs font-semibold" style="color: var(--color-text-muted);">
+							ЗАЯВКИ НА ВСТУПЛЕНИЕ
+							<span
+								class="ml-1 inline-flex items-center justify-center rounded-full px-1.5 py-0.5 text-xs font-bold"
+								style="background: var(--color-accent); color: var(--color-bg-card); min-width: 18px;"
+							>
+								{pendingRequests.length}
+							</span>
+						</p>
+						<div class="flex flex-col gap-2">
+							{#each pendingRequests as req (req.id)}
+								<div
+									class="flex items-center justify-between gap-3 rounded-lg px-3 py-2"
+									style="background: var(--color-bg-page); border: 1px solid var(--color-border);"
+								>
+									<div>
+										<p class="text-sm font-medium" style="color: var(--color-text-primary);">
+											{req.requester_name}
+										</p>
+										<p class="text-xs" style="color: var(--color-text-muted);">
+											{new Date(req.created_at).toLocaleDateString('ru-RU')}
+										</p>
+									</div>
+									<div class="flex gap-2">
+										<form
+											method="POST"
+											action="?/approveRequest"
+											use:enhance={({}) => {
+												return async ({ result, update }) => {
+													await update();
+													if (result.type === 'failure') {
+														familyError = String(
+															(result.data as Record<string, unknown>)?.familyError ?? 'Ошибка'
+														);
+													}
+												};
+											}}
+										>
+											<input type="hidden" name="request_id" value={req.id} />
+											<button
+												type="submit"
+												class="btn-primary text-xs"
+												style="width: auto; padding: 6px 14px;"
+											>
+												Принять
+											</button>
+										</form>
+										<form
+											method="POST"
+											action="?/rejectRequest"
+											use:enhance={({}) => {
+												return async ({ result, update }) => {
+													await update();
+													if (result.type === 'failure') {
+														familyError = String(
+															(result.data as Record<string, unknown>)?.familyError ?? 'Ошибка'
+														);
+													}
+												};
+											}}
+										>
+											<input type="hidden" name="request_id" value={req.id} />
+											<button
+												type="submit"
+												class="btn-secondary text-xs"
+												style="width: auto; padding: 6px 14px;"
+											>
+												Отклонить
+											</button>
+										</form>
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
+			{:else}
+				<!-- Участник: кнопка выхода -->
+				<p class="mb-4 text-sm" style="color: var(--color-text-muted);">
+					Вы участник семьи другого пользователя
+				</p>
+				<form
+					method="POST"
+					action="?/leaveFamily"
+					use:enhance={({}) => {
+						return async ({ result, update }) => {
+							await update();
+							if (result.type === 'failure') {
+								familyError = String(
+									(result.data as Record<string, unknown>)?.familyError ?? 'Ошибка'
+								);
+							}
+						};
+					}}
+				>
+					<button
+						type="submit"
+						class="btn-secondary text-sm"
+						style="width: auto; padding: 8px 16px; color: var(--color-error);"
+					>
+						Выйти из семьи
+					</button>
+				</form>
+			{/if}
+		</div>
 	</div>
 </div>

@@ -10,8 +10,20 @@
       "Bash(mv schema-v5.sql database/)",
       "Bash(mv migration-add-ingredient-qty.sql database/migrations/)",
       "Bash(mv product_recomendation.md strategy.md)",
-      "Bash(rm backlog.md)"
+      "Bash(rm backlog.md)",
+      "Bash(pnpm prettier:*)",
+      "Bash(pnpm exec:*)",
+      "Bash(sed -n '203,210p' \"D:/sites/Planmeal-v5/.worktrees/feature/v5-073-password-change/src/routes/settings/+page.svelte\")",
+      "Bash(sed -n '285,292p' \"D:/sites/Planmeal-v5/.worktrees/feature/v5-073-password-change/src/routes/settings/+page.svelte\")",
+      "Bash(sed -n '444,451p' \"D:/sites/Planmeal-v5/.worktrees/feature/v5-073-password-change/src/routes/settings/+page.svelte\")",
+      "Bash(node -e \"const sv = require\\('D:/sites/Planmeal-v5/.worktrees/feature/v5-073-password-change/node_modules/@sveltejs/kit/package.json'\\); console.log\\(sv.version\\)\")",
+      "Bash(grep -v \"^.*//.*forgotEmail\")",
+      "Bash(xargs grep:*)",
+      "Bash(npx prettier:*)",
+      "Bash(npx eslint:*)",
+      "Bash(grep -n 'handleCopyWeekConfirmed\\\\|handleCopyDayConfirmed\\\\|mealAccentColor\\\\|showToast\\\\|toast\\\\b\\\\|rgba\\(255\\\\|sort_order\\\\|$effect' d:/sites/Planmeal-v5/.worktrees/feature/v5-017-copy-menu/src/routes/+page.svelte)"
     ],
+    "defaultMode": "bypassPermissions",
     "additionalDirectories": [
       "C:\\Users\\Billi\\.claude",
       "d:\\sites\\Planmeal-v5\\src\\routes\\settings"

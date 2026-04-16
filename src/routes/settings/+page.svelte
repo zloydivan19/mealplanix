@@ -5,6 +5,7 @@
 	import { calcKbju, ACTIVITY_LABELS } from '$lib/utils/kbju.js';
 	import type {
 		Persona,
+		Household,
 		ActivityLevel,
 		Formula,
 		Gender,
@@ -48,7 +49,6 @@
 	let editActivity = $state<ActivityLevel>('moderate');
 	let editFormula = $state<Formula>('mifflin');
 	let editMatchKcal = $state(false);
-	let editCarryDinner = $state(true);
 	let editBf = $state(25);
 	let editLn = $state(40);
 	let editDn = $state(35);
@@ -64,7 +64,6 @@
 		editActivity = p.activity ?? 'moderate';
 		editFormula = p.formula ?? 'mifflin';
 		editMatchKcal = p.match_kcal ?? false;
-		editCarryDinner = p.carry_dinner_to_lunch ?? true;
 		const r = p.meal_ratios as { bf: number; ln: number; dn: number } | null;
 		editBf = r?.bf ?? 25;
 		editLn = r?.ln ?? 40;
@@ -147,8 +146,10 @@
 	let formula = $state<Formula>(_p?.formula ?? 'mifflin');
 	let kcalOverride = $state<number | ''>('');
 
-	// ── Настройки генерации ───────────────────────────────────
-	let carryDinner = $state(_p?.carry_dinner_to_lunch ?? true);
+	// ── Настройки генерации (уровень домохозяйства) ──────────
+	let carryDinner = $state((page.data.household as Household | null)?.carry_dinner_to_lunch ?? true);
+
+	// ── Настройки персоны (уровень персоны) ──────────────────
 	let matchKcal = $state(_p?.match_kcal ?? false);
 
 	let bf = $state(_r?.bf ?? 25);
@@ -166,7 +167,6 @@
 		height = persona.height ?? '';
 		activity = persona.activity ?? 'moderate';
 		formula = persona.formula ?? 'mifflin';
-		carryDinner = persona.carry_dinner_to_lunch ?? true;
 		matchKcal = persona.match_kcal ?? false;
 		bf = r?.bf ?? 25;
 		ln = r?.ln ?? 40;
@@ -246,7 +246,6 @@
 				fat_target: kbju?.fat ?? null,
 				carbs_target: kbju?.carbs ?? null,
 				meal_ratios: matchKcal ? { bf, ln, dn } : { bf: 25, ln: 40, dn: 35 },
-				carry_dinner_to_lunch: carryDinner,
 				match_kcal: matchKcal
 			})
 			.eq('id', persona.id);
@@ -481,8 +480,7 @@
 							<input type="hidden" name="activity" value={editActivity} />
 							<input type="hidden" name="formula" value={editFormula} />
 							<input type="hidden" name="match_kcal" value={editMatchKcal ? '1' : '0'} />
-							<input type="hidden" name="carry_dinner" value={editCarryDinner ? '1' : '0'} />
-							<input type="hidden" name="bf" value={editBf} />
+								<input type="hidden" name="bf" value={editBf} />
 							<input type="hidden" name="ln" value={editLn} />
 							<input type="hidden" name="dn" value={editDn} />
 							<input type="hidden" name="kcal_target" value={editMatchKcal ? (editKbju?.kcal ?? '') : editKcal} />
@@ -864,32 +862,6 @@
 									</div>
 								</div>
 							{/if}
-
-							<!-- Тумблер carry_dinner_to_lunch -->
-							<div class="flex items-start gap-3">
-								<button
-									type="button"
-									role="switch"
-									aria-checked={editCarryDinner}
-									aria-label="Переносить ужин на обед следующего дня"
-									onclick={() => (editCarryDinner = !editCarryDinner)}
-									class="relative mt-0.5 h-6 w-10 shrink-0 cursor-pointer rounded-full transition-colors"
-									style="background: {editCarryDinner ? 'var(--color-green-primary)' : 'var(--color-border)'}; border: none; padding: 0;"
-								>
-									<span
-										class="absolute top-1 block h-4 w-4 rounded-full shadow transition-transform"
-										style="background: var(--color-text-inverse); transform: translateX({editCarryDinner ? '20px' : '4px'});"
-									></span>
-								</button>
-								<div>
-									<p class="text-sm font-semibold" style="color: var(--color-text-primary);">
-										Переносить ужин на обед следующего дня
-									</p>
-									<p class="mt-0.5 text-xs" style="color: var(--color-text-muted); line-height: 1.5;">
-										Готовишь несколько порций сразу — при генерации обед каждого дня совпадает с ужином предыдущего.
-									</p>
-								</div>
-							</div>
 
 							{#if editError}
 								<p
@@ -1401,39 +1373,6 @@
 						</div>
 					{/if}
 
-					<!-- Разделитель -->
-					<div style="height: 1px; background: var(--color-border); margin: 20px 0;"></div>
-
-					<!-- Тумблер carry_dinner_to_lunch -->
-					<div class="flex items-start gap-3">
-						<button
-							type="button"
-							role="switch"
-							aria-checked={carryDinner}
-							aria-label="Переносить ужин на обед следующего дня"
-							onclick={() => (carryDinner = !carryDinner)}
-							class="relative mt-0.5 h-6 w-10 shrink-0 cursor-pointer rounded-full transition-colors"
-							style="background: {carryDinner
-								? 'var(--color-green-primary)'
-								: 'var(--color-border)'}; border: none; padding: 0;"
-						>
-							<span
-								class="absolute top-1 block h-4 w-4 rounded-full shadow transition-transform"
-								style="background: var(--color-text-inverse); transform: translateX({carryDinner
-									? '20px'
-									: '4px'});"
-							></span>
-						</button>
-						<div>
-							<p class="text-sm font-semibold" style="color: var(--color-text-primary);">
-								Переносить ужин на обед следующего дня
-							</p>
-							<p class="mt-0.5 text-xs" style="color: var(--color-text-muted); line-height: 1.5;">
-								Готовишь несколько порций сразу — одна идёт на ужин, другая на завтра в обед. При
-								генерации меню обед каждого дня будет совпадать с ужином предыдущего.
-							</p>
-						</div>
-					</div>
 				</div>
 
 				<!-- Ошибка -->
@@ -1473,6 +1412,54 @@
 							Сохранено
 						</p>
 					{/if}
+				</div>
+
+				<!-- ── РАЗДЕЛ: Генерация меню ──────────────────────────── -->
+				<div
+					style="background: var(--color-bg-card); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); border: 1px solid var(--color-border); padding: 20px;"
+				>
+					<h2 class="mb-1 font-semibold" style="font-size: 16px; color: var(--color-text-primary);">
+						Генерация меню
+					</h2>
+					<p class="mb-4 text-sm" style="color: var(--color-text-muted);">Настройки применяются для всей семьи</p>
+
+					<form
+						method="POST"
+						action="?/updateCarryDinner"
+						use:enhance={({ }) => {
+							return async ({ result, update }) => {
+								if (result.type === 'success') {
+									await update();
+								}
+							};
+						}}
+						class="flex items-start gap-3"
+					>
+						<input type="hidden" name="carry_dinner_to_lunch" value={carryDinner ? '1' : '0'} />
+						<button
+							type="submit"
+							role="switch"
+							aria-checked={carryDinner}
+							aria-label="Переносить ужин на обед следующего дня"
+							onclick={(e) => { e.preventDefault(); carryDinner = !carryDinner; (e.currentTarget.closest('form') as HTMLFormElement).requestSubmit(); }}
+							class="relative mt-0.5 h-6 w-10 shrink-0 cursor-pointer rounded-full transition-colors"
+							style="background: {carryDinner ? 'var(--color-green-primary)' : 'var(--color-border)'}; border: none; padding: 0;"
+						>
+							<span
+								class="absolute top-1 block h-4 w-4 rounded-full shadow transition-transform"
+								style="background: var(--color-text-inverse); transform: translateX({carryDinner ? '20px' : '4px'});"
+							></span>
+						</button>
+						<div>
+							<p class="text-sm font-semibold" style="color: var(--color-text-primary);">
+								Переносить ужин на обед следующего дня
+							</p>
+							<p class="mt-0.5 text-xs" style="color: var(--color-text-muted); line-height: 1.5;">
+								Готовишь несколько порций сразу — одна идёт на ужин, другая на завтра в обед. При
+								генерации меню обед каждого дня будет совпадать с ужином предыдущего.
+							</p>
+						</div>
+					</form>
 				</div>
 
 				<!-- ── РАЗДЕЛ: Безопасность ────────────────────────────── -->

@@ -44,6 +44,30 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
+	updateCarryDinner: async ({ request, locals }) => {
+		const { session, user } = await locals.safeGetSession();
+		if (!session || !user) return fail(401, { error: 'Не авторизован' });
+
+		const formData = await request.formData();
+		const value = formData.get('carry_dinner_to_lunch') === '1';
+
+		const { data: memberData } = await locals.supabase
+			.from('household_members')
+			.select('household_id')
+			.eq('user_id', user.id)
+			.single();
+
+		if (!memberData?.household_id) return fail(400, { error: 'Домохозяйство не найдено' });
+
+		const { error } = await locals.supabase
+			.from('households')
+			.update({ carry_dinner_to_lunch: value })
+			.eq('id', memberData.household_id);
+
+		if (error) return fail(400, { error: 'Не удалось сохранить: ' + error.message });
+		return { carryDinnerUpdated: true };
+	},
+
 	changePassword: async ({ request, locals }) => {
 		const formData = await request.formData();
 		const password = String(formData.get('password') ?? '');
@@ -159,7 +183,6 @@ export const actions: Actions = {
 		const formula = (rawFormula === 'harris' ? 'harris' : 'mifflin') as Formula;
 
 		const matchKcal = formData.get('match_kcal') === '1';
-		const carryDinner = formData.get('carry_dinner') !== '0';
 
 		const bf = toNum(formData.get('bf')) ?? 25;
 		const ln = toNum(formData.get('ln')) ?? 40;
@@ -174,7 +197,6 @@ export const actions: Actions = {
 			activity,
 			formula,
 			match_kcal: matchKcal,
-			carry_dinner_to_lunch: carryDinner,
 			meal_ratios: { bf, ln, dn },
 			kcal_target: toNum(formData.get('kcal_target')),
 			protein_target: toNum(formData.get('protein_target')),

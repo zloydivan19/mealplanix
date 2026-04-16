@@ -53,6 +53,7 @@ export interface Profile {
 export interface Household {
 	id: string;
 	invite_code: string;
+	carry_dinner_to_lunch: boolean;
 	created_at: string;
 }
 

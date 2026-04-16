@@ -662,7 +662,7 @@
 			const slots = generateWeekPlan({
 				kcal_target: persona.kcal_target ?? 2000,
 				meal_ratios: persona.meal_ratios as { bf: number; ln: number; dn: number },
-				carry_dinner_to_lunch: persona.carry_dinner_to_lunch ?? true,
+				carry_dinner_to_lunch: (page.data.household as import('$lib/types/database.js').Household | null)?.carry_dinner_to_lunch ?? true,
 				match_kcal: persona.match_kcal ?? true,
 				customDishes: (page.data.customDishes ??
 					[]) as import('$lib/types/database.js').CustomDish[],

@@ -1,6 +1,11 @@
 {
-  "load_custom_agents": true,
-  "auto_load_agents": false,
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install:*)",
+      "Bash(pnpm svelte-kit:*)",
+      "Bash(pnpm lint:*)"
+    ]
+  },
   "skillOverrides": {
     "netlify-skills:netlify-ai-gateway": "off",
     "netlify-skills:netlify-blobs": "off",
@@ -15,5 +20,7 @@
     "netlify-skills:netlify-functions": "off",
     "netlify-skills:netlify-identity": "off",
     "netlify-skills:netlify-image-cdn": "off"
-  }
+  },
+  "load_custom_agents": true,
+  "auto_load_agents": false
 }

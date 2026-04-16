@@ -1,7 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import { randomBytes } from 'node:crypto';
 import type { Actions, PageServerLoad } from './$types.js';
-import type { Database, HouseholdMember, HouseholdJoinRequest } from '$lib/types/database.js';
+import type { Database, HouseholdMember, HouseholdJoinRequest, ActivityLevel, Formula, Gender } from '$lib/types/database.js';
 
 type PersonaInsert = Database['public']['Tables']['personas']['Insert'];
 type PersonaUpdate = Database['public']['Tables']['personas']['Update'];
@@ -115,29 +115,22 @@ export const actions: Actions = {
 
 	updateLocalPersona: async ({ request, locals }) => {
 		const { session, user } = await locals.safeGetSession();
-		if (!session || !user) return fail(401, { error: 'Не авторизован' });
+		if (!session || !user) return fail(401, { updateError: 'Не авторизован' });
 
 		const formData = await request.formData();
 		const personaId = Number(formData.get('persona_id'));
 		const name = String(formData.get('name') ?? '').trim();
-		const kcalTarget = formData.get('kcal_target');
-		const proteinTarget = formData.get('protein_target');
-		const fatTarget = formData.get('fat_target');
-		const carbsTarget = formData.get('carbs_target');
 
 		if (!personaId) return fail(400, { updateError: 'Неверный ID персоны' });
 		if (!name) return fail(400, { updateError: 'Нужно ввести имя' });
 
-		// Получаем household_id текущего пользователя
 		const { data: memberData } = await locals.supabase
 			.from('household_members')
 			.select('household_id')
 			.eq('user_id', user.id)
 			.single();
 
-		if (!memberData?.household_id) {
-			return fail(400, { updateError: 'Домохозяйство не найдено' });
-		}
+		if (!memberData?.household_id) return fail(400, { updateError: 'Домохозяйство не найдено' });
 
 		const { data: p } = await locals.supabase
 			.from('personas')
@@ -146,14 +139,8 @@ export const actions: Actions = {
 			.single();
 
 		if (!p) return fail(404, { updateError: 'Персона не найдена' });
-
-		if (p.household_id !== memberData.household_id) {
-			return fail(403, { updateError: 'Нельзя редактировать эту персону' });
-		}
-
-		if (p.user_id !== null || p.created_by_user_id !== user.id) {
-			return fail(403, { updateError: 'Нельзя редактировать эту персону' });
-		}
+		if (p.household_id !== memberData.household_id) return fail(403, { updateError: 'Нельзя редактировать эту персону' });
+		if (p.user_id !== null || p.created_by_user_id !== user.id) return fail(403, { updateError: 'Нельзя редактировать эту персону' });
 
 		const toNum = (v: FormDataEntryValue | null): number | null => {
 			if (v === null || v === '') return null;
@@ -161,18 +148,43 @@ export const actions: Actions = {
 			return isNaN(n) ? null : n;
 		};
 
+		const rawGender = String(formData.get('gender') ?? 'male');
+		const gender = (rawGender === 'female' ? 'female' : 'male') as Gender;
+
+		const rawActivity = String(formData.get('activity') ?? 'moderate');
+		const validActivities: ActivityLevel[] = ['sedentary', 'light', 'moderate', 'active', 'very_active'];
+		const activity = (validActivities.includes(rawActivity as ActivityLevel) ? rawActivity : 'moderate') as ActivityLevel;
+
+		const rawFormula = String(formData.get('formula') ?? 'mifflin');
+		const formula = (rawFormula === 'harris' ? 'harris' : 'mifflin') as Formula;
+
+		const matchKcal = formData.get('match_kcal') === '1';
+		const carryDinner = formData.get('carry_dinner') !== '0';
+
+		const bf = toNum(formData.get('bf')) ?? 25;
+		const ln = toNum(formData.get('ln')) ?? 40;
+		const dn = toNum(formData.get('dn')) ?? 35;
+
 		const updateData: PersonaUpdate = {
 			name,
-			kcal_target: toNum(kcalTarget),
-			protein_target: toNum(proteinTarget),
-			fat_target: toNum(fatTarget),
-			carbs_target: toNum(carbsTarget)
+			gender,
+			age: toNum(formData.get('age')),
+			weight: toNum(formData.get('weight')),
+			height: toNum(formData.get('height')),
+			activity,
+			formula,
+			match_kcal: matchKcal,
+			carry_dinner_to_lunch: carryDinner,
+			meal_ratios: { bf, ln, dn },
+			kcal_target: toNum(formData.get('kcal_target')),
+			protein_target: toNum(formData.get('protein_target')),
+			fat_target: toNum(formData.get('fat_target')),
+			carbs_target: toNum(formData.get('carbs_target'))
 		};
 
 		const { error } = await locals.supabase.from('personas').update(updateData).eq('id', personaId);
 
 		if (error) return fail(400, { updateError: 'Не удалось сохранить: ' + error.message });
-
 		return { updateSuccess: true };
 	},
 

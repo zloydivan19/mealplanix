@@ -80,6 +80,18 @@ export const load: LayoutServerLoad = async ({ locals, url, cookies }) => {
 		persona = personas.find((p) => p.user_id === user.id) ?? null;
 	}
 
+	// Если пользователь вступил в чужое хозяйство, его персона находится
+	// в собственном хозяйстве (own_household_id) — ищем там
+	if (!persona && ownHouseholdId && ownHouseholdId !== householdId) {
+		const { data: ownPersonaData } = await locals.supabase
+			.from('personas')
+			.select('*')
+			.eq('household_id', ownHouseholdId)
+			.eq('user_id', user.id)
+			.maybeSingle();
+		persona = (ownPersonaData as Persona | null) ?? null;
+	}
+
 	// Нет персоны и не на онбординге → редирект на онбординг
 	// Есть персона и зашёл на онбординг → редирект на главную
 	const onOnboarding = url.pathname.startsWith('/onboarding');

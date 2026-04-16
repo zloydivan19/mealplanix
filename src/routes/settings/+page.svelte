@@ -22,7 +22,8 @@
 	// ── Создание персоны ──────────────────────────────────────
 	let showCreateForm = $state(false);
 	let newPersonaName = $state('');
-	let newPersonaNoAccount = $state(false);
+	// Персоны из настроек всегда локальные (user_id = null)
+	// Основная персона создаётся только на онбординге
 	let creating = $state(false);
 	let createError = $state('');
 	let createSuccess = $state(false);
@@ -586,7 +587,6 @@
 						onclick={() => {
 							showCreateForm = true;
 							newPersonaName = '';
-							newPersonaNoAccount = false;
 							createError = '';
 						}}
 						class="flex items-center gap-2 text-sm font-semibold transition-colors"
@@ -615,7 +615,6 @@
 									createSuccess = true;
 									showCreateForm = false;
 									newPersonaName = '';
-									newPersonaNoAccount = false;
 									if (createSuccessTimer) clearTimeout(createSuccessTimer);
 								createSuccessTimer = setTimeout(() => { createSuccess = false; createSuccessTimer = null; }, 2500);
 								} else if (result.type === 'failure') {
@@ -644,58 +643,11 @@
 							/>
 						</div>
 
-						<!-- Тумблер «Без аккаунта» -->
-						<div
-							style="border-radius: var(--radius-lg); border: 1px solid {newPersonaNoAccount
-								? 'var(--color-green-tint-border)'
-								: 'var(--color-border)'}; overflow: hidden; transition: border-color var(--transition-fast);"
-						>
-							<button
-								type="button"
-								onclick={() => (newPersonaNoAccount = !newPersonaNoAccount)}
-								class="flex w-full items-center gap-3 px-4 py-3"
-								style="background: {newPersonaNoAccount
-									? 'var(--color-green-tint)'
-									: 'var(--color-bg-page)'}; border: none; cursor: pointer; transition: background var(--transition-fast);"
-							>
-								<div
-									class="relative h-6 w-10 shrink-0 rounded-full"
-									style="background: {newPersonaNoAccount
-										? 'var(--color-green-primary)'
-										: 'var(--color-border)'}; transition: background var(--transition-fast);"
-								>
-									<span
-										class="absolute top-1 block h-4 w-4 rounded-full shadow"
-										style="background: var(--color-text-inverse); transform: translateX({newPersonaNoAccount
-											? '20px'
-											: '4px'}); transition: transform var(--transition-fast);"
-									></span>
-								</div>
-								<div class="text-left">
-									<p
-										class="text-sm font-semibold"
-										style="color: {newPersonaNoAccount
-											? 'var(--color-green-primary)'
-											: 'var(--color-text-primary)'};"
-									>
-										Без аккаунта
-									</p>
-								</div>
-							</button>
-							<div class="px-4 pt-1 pb-3">
-								<p class="text-xs" style="color: var(--color-text-muted); line-height: 1.5;">
-									{#if newPersonaNoAccount}
-										Персона для члена семьи без аккаунта. Настройки КБЖУ можно задать после
-										создания.
-									{:else}
-										Персона будет привязана к твоему аккаунту.
-									{/if}
-								</p>
-							</div>
-						</div>
+						<p class="text-xs" style="color: var(--color-text-muted);">
+							Персона для члена семьи без аккаунта. КБЖУ можно задать после создания.
+						</p>
 
-						<!-- Скрытое поле флага -->
-						<input type="hidden" name="no_account" value={newPersonaNoAccount ? '1' : '0'} />
+						<input type="hidden" name="no_account" value="1" />
 
 						{#if createError}
 							<p

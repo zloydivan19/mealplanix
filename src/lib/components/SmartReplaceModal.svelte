@@ -18,18 +18,16 @@
 
   const customAsDishes = $derived(customDishes.map(customToDish));
 
+  const sourceKey = $derived({ kcal: sourcePlan.kcal, protein: sourcePlan.protein, fat: sourcePlan.fat, carbs: sourcePlan.carbs, category: sourcePlan.dish_category ?? '' });
+
   const catalogMatches = $derived(
-    findSimilarDishes(
-      { kcal: sourcePlan.kcal, protein: sourcePlan.protein, fat: sourcePlan.fat, carbs: sourcePlan.carbs, category: sourcePlan.dish_category ?? '' },
-      catalog,
-    )
+    findSimilarDishes(sourceKey, catalog)
+      .filter(r => r.dish.name !== sourcePlan.dish_name)
   );
 
   const customMatches = $derived(
-    findSimilarDishes(
-      { kcal: sourcePlan.kcal, protein: sourcePlan.protein, fat: sourcePlan.fat, carbs: sourcePlan.carbs, category: sourcePlan.dish_category ?? '' },
-      customAsDishes,
-    ).filter(r => r.score > 50)
+    findSimilarDishes(sourceKey, customAsDishes)
+      .filter(r => r.score > 50 && r.dish.name !== sourcePlan.dish_name)
   );
 
   let showCount = $state(5);

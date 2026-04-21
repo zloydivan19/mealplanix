@@ -163,13 +163,19 @@ export function generateWeekPlan(opts: GenerateOptions): GeneratedSlot[] {
       if (prevMain) {
         slots.push({ ...prevMain, day_index: day, meal_key: 'ln' });
       }
-      buildMealSlots(day, 'ln', kcal_ln, [
-        { category: 'side',  ratio: 0.35 },
-        { category: 'salad', ratio: 0.20 },
-      ], {
-        side:  prevDayIds(slots, day, 'side'),
-        salad: prevDayIds(slots, day, 'salad'),
-      } as Record<DishCategory, number[]>, match_kcal, slots, dishesByCat);
+      const prevSalad = prevDayIds(slots, day, 'salad');
+      if (prevMain?.dish.standalone) {
+        const saladDish = pickDish(dishesByCat.salad, Math.round(kcal_ln * 0.20), prevSalad, match_kcal);
+        slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(saladDish, Math.round(kcal_ln * 0.20)) });
+      } else {
+        buildMealSlots(day, 'ln', kcal_ln, [
+          { category: 'side',  ratio: 0.35 },
+          { category: 'salad', ratio: 0.20 },
+        ], {
+          side:  prevDayIds(slots, day, 'side'),
+          salad: prevSalad,
+        } as Record<DishCategory, number[]>, match_kcal, slots, dishesByCat);
+      }
     } else {
       const prevMain  = prevDayIds(slots, day, 'main');
       const prevSide  = prevDayIds(slots, day, 'side');

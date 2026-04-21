@@ -21,6 +21,7 @@ export interface Dish {
   portion_min_g:     number;
   portion_max_g:     number;
   cost_per_100g:     number;
+  standalone?:       boolean;
   photo?:            string | null;
   ingredients:       DishIngredient[];
   _custom?:          boolean;

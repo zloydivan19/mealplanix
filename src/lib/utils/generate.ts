@@ -171,15 +171,21 @@ export function generateWeekPlan(opts: GenerateOptions): GeneratedSlot[] {
         salad: prevDayIds(slots, day, 'salad'),
       } as Record<DishCategory, number[]>, match_kcal, slots, dishesByCat);
     } else {
-      buildMealSlots(day, 'ln', kcal_ln, [
-        { category: 'main',  ratio: 0.45 },
-        { category: 'side',  ratio: 0.35 },
-        { category: 'salad', ratio: 0.20 },
-      ], {
-        main:  prevDayIds(slots, day, 'main'),
-        side:  prevDayIds(slots, day, 'side'),
-        salad: prevDayIds(slots, day, 'salad'),
-      } as Record<DishCategory, number[]>, match_kcal, slots, dishesByCat);
+      const prevMain  = prevDayIds(slots, day, 'main');
+      const prevSide  = prevDayIds(slots, day, 'side');
+      const prevSalad = prevDayIds(slots, day, 'salad');
+      const mainDish  = pickDish(dishesByCat.main, Math.round(kcal_ln * 0.45), prevMain, match_kcal);
+      if (mainDish.standalone) {
+        slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(mainDish, Math.round(kcal_ln * 0.80)) });
+        const saladDish = pickDish(dishesByCat.salad, Math.round(kcal_ln * 0.20), prevSalad, match_kcal);
+        slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(saladDish, Math.round(kcal_ln * 0.20)) });
+      } else {
+        slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(mainDish, Math.round(kcal_ln * 0.45)) });
+        const sideDish  = pickDish(dishesByCat.side,  Math.round(kcal_ln * 0.35), prevSide,  match_kcal);
+        slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(sideDish,  Math.round(kcal_ln * 0.35)) });
+        const saladDish = pickDish(dishesByCat.salad, Math.round(kcal_ln * 0.20), prevSalad, match_kcal);
+        slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(saladDish, Math.round(kcal_ln * 0.20)) });
+      }
     }
 
     // ── Ужин ─────────────────────────────────────────────────────────────

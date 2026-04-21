@@ -44,11 +44,14 @@
       fsLoading = true;
       try {
         const res = await fetch(`/api/fatsecret?q=${encodeURIComponent(fsQuery)}&max=8`);
-        if (!res.ok) throw new Error('Ошибка запроса');
+        if (!res.ok) {
+          const body = await res.text();
+          throw new Error(`${res.status}: ${body}`);
+        }
         fsResults = await res.json();
         fsOpen = fsResults.length > 0;
-      } catch {
-        fsError = 'Не удалось получить данные FatSecret';
+      } catch (e) {
+        fsError = 'Не удалось получить данные FatSecret: ' + (e instanceof Error ? e.message : String(e));
         fsResults = [];
         fsOpen = false;
       } finally {
@@ -76,14 +79,15 @@
   let saveError    = $state('');
 
   // Поля формы
-  let fname     = $state('');
-  let fcategory = $state<CustomDishData['category']>('main');
-  let fkcal     = $state('');
-  let fprotein  = $state('');
-  let ffat      = $state('');
-  let fcarbs    = $state('');
-  let fportion  = $state('150');
-  let fcost     = $state('');
+  let fname       = $state('');
+  let fcategory   = $state<CustomDishData['category']>('main');
+  let fstandalone = $state(false);
+  let fkcal       = $state('');
+  let fprotein    = $state('');
+  let ffat        = $state('');
+  let fcarbs      = $state('');
+  let fportion    = $state('150');
+  let fcost       = $state('');
 
   // Tag-based ingredients
   interface IngTag { name: string; category: ShoppingCategory; qty?: number; unit?: string }
@@ -141,7 +145,7 @@
 
   function openCreate() {
     editingDish = null;
-    fname = ''; fcategory = 'main'; fkcal = ''; fprotein = '';
+    fname = ''; fcategory = 'main'; fstandalone = false; fkcal = ''; fprotein = '';
     ffat = ''; fcarbs = ''; fportion = '150'; fcost = '';
     ingTags = []; ingInput = '';
     openDropdown = null;
@@ -154,8 +158,9 @@
     editingDish = dish;
     const d = dish.data;
     fname     = d.name;
-    fcategory = d.category;
-    fkcal     = String(d.kcal_per_100g);
+    fcategory   = d.category;
+    fstandalone = d.standalone ?? false;
+    fkcal       = String(d.kcal_per_100g);
     fprotein  = String(d.protein_per_100g);
     ffat      = String(d.fat_per_100g);
     fcarbs    = String(d.carbs_per_100g);
@@ -196,6 +201,7 @@
     const dishData = {
       name:              fname.trim(),
       category:          fcategory,
+      standalone:        fstandalone,
       kcal_per_100g:     Number(fkcal),
       protein_per_100g:  Number(fprotein),
       fat_per_100g:      Number(ffat),
@@ -471,6 +477,15 @@
             <option value="snack">Перекус</option>
           </select>
         </div>
+
+        <!-- Без гарнира (только для основных блюд) -->
+        {#if fcategory === 'main'}
+          <label class="flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" bind:checked={fstandalone} class="w-4 h-4 rounded" style="accent-color: var(--color-green-primary);" />
+            <span class="text-sm" style="color: var(--color-text-primary);">Не нужен гарнир</span>
+            <span class="text-xs" style="color: var(--color-text-muted);">(пельмени, макароны по-флотски и т.п.)</span>
+          </label>
+        {/if}
 
         <!-- КБЖУ — 4 поля в ряд -->
         <div>

@@ -17,7 +17,7 @@
 	import type { MenuPlanRow } from './+page.server.js';
 	import MealCard from '$lib/components/MealCard.svelte';
 	import MealModal from '$lib/components/MealModal.svelte';
-import SmartReplaceModal from '$lib/components/SmartReplaceModal.svelte';
+	import SmartReplaceModal from '$lib/components/SmartReplaceModal.svelte';
 	import DishDetailModal from '$lib/components/DishDetailModal.svelte';
 	import type { Dish } from '$lib/types/dish.js';
 	import { generateWeekPlan } from '$lib/utils/generate.js';
@@ -142,7 +142,7 @@ import SmartReplaceModal from '$lib/components/SmartReplaceModal.svelte';
 	}
 	let openSlot = $state<OpenSlot | null>(null);
 	let replacingPlan = $state<MenuPlanRow | null>(null); // план, который заменяем
-let smartReplacePlan = $state<MenuPlanRow | null>(null);
+	let smartReplacePlan = $state<MenuPlanRow | null>(null);
 
 	function openModal(dayIdx: number, meal: MealKey) {
 		openSlot = {

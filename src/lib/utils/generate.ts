@@ -46,7 +46,7 @@ function customToDish(cd: CustomDish, idx: number): Dish {
 }
 
 /** Масштабирует блюдо до целевых ккал, зажимая порцию в реалистичном диапазоне */
-function scaleDish(dish: Dish, target_kcal: number): Omit<GeneratedSlot, 'day_index' | 'meal_key'> {
+export function scaleDish(dish: Dish, target_kcal: number): Omit<GeneratedSlot, 'day_index' | 'meal_key'> {
   const rawGrams = Math.round(target_kcal / dish.kcal_per_100g * 100);
   const grams    = Math.min(Math.max(rawGrams, dish.portion_min_g), dish.portion_max_g);
   const k        = grams / 100;
@@ -227,4 +227,37 @@ export function generateWeekPlan(opts: GenerateOptions): GeneratedSlot[] {
   }
 
   return slots;
+}
+
+export interface SimilarDish {
+  dish:  Dish;
+  score: number; // 0–100
+}
+
+/**
+ * Подбирает блюда той же категории по близости соотношений БЖУ.
+ * source.kcal/protein/fat/carbs — значения в любых единицах (соотношения инвариантны к масштабу).
+ */
+export function findSimilarDishes(
+  source: { kcal: number; protein: number; fat: number; carbs: number; category: string; id?: number },
+  catalog: Dish[],
+): SimilarDish[] {
+  const k = source.kcal || 1;
+  const srcPR = (source.protein * 4) / k;
+  const srcFR = (source.fat     * 9) / k;
+  const srcCR = (source.carbs   * 4) / k;
+
+  return catalog
+    .filter(d => d.category === source.category && d.id !== source.id)
+    .map(d => {
+      const dk   = d.kcal_per_100g || 1;
+      const dPR  = (d.protein_per_100g * 4) / dk;
+      const dFR  = (d.fat_per_100g     * 9) / dk;
+      const dCR  = (d.carbs_per_100g   * 4) / dk;
+      const diff = Math.abs(dPR - srcPR) * 0.4
+                 + Math.abs(dFR - srcFR) * 0.3
+                 + Math.abs(dCR - srcCR) * 0.3;
+      return { dish: d, score: Math.max(0, Math.round((1 - diff * 2.5) * 100)) };
+    })
+    .sort((a, b) => b.score - a.score);
 }

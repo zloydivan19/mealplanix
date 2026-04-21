@@ -17,6 +17,7 @@
 	import type { MenuPlanRow } from './+page.server.js';
 	import MealCard from '$lib/components/MealCard.svelte';
 	import MealModal from '$lib/components/MealModal.svelte';
+import SmartReplaceModal from '$lib/components/SmartReplaceModal.svelte';
 	import DishDetailModal from '$lib/components/DishDetailModal.svelte';
 	import type { Dish } from '$lib/types/dish.js';
 	import { generateWeekPlan } from '$lib/utils/generate.js';
@@ -97,6 +98,10 @@
 	let personas = $derived(page.data.personas as Persona[]);
 	let activeId = $state<number>(page.data.persona?.id ?? 0);
 	let activePersona = $derived(personas.find((p) => p.id === activeId) ?? personas[0]);
+	// true только если активная персона принадлежит собственному хозяйству текущего пользователя
+	let canEdit = $derived(
+		!!activePersona && activePersona.household_id === page.data.ownHouseholdId
+	);
 
 	function initials(name: string): string {
 		return name
@@ -137,6 +142,7 @@
 	}
 	let openSlot = $state<OpenSlot | null>(null);
 	let replacingPlan = $state<MenuPlanRow | null>(null); // план, который заменяем
+let smartReplacePlan = $state<MenuPlanRow | null>(null);
 
 	function openModal(dayIdx: number, meal: MealKey) {
 		openSlot = {
@@ -154,9 +160,28 @@
 	}
 
 	function handleDetailReplace(plan: MenuPlanRow) {
-		replacingPlan = plan;
 		detailPlan = null;
-		// Открываем MealModal для того же слота
+		smartReplacePlan = plan;
+	}
+
+	function handleSmartReplace(dish: Dish, grams: number) {
+		if (!smartReplacePlan || !activePersona) return;
+		const plan = smartReplacePlan;
+		smartReplacePlan = null;
+		replacingPlan = plan;
+		openSlot = {
+			dayIdx: plan.day_index,
+			meal: plan.meal_key as MealKey,
+			dayLabel: `${DAY_SHORT[plan.day_index]}, ${weekDays[plan.day_index].getDate()}`
+		};
+		handleSelect(dish, grams);
+	}
+
+	function handleSmartReplaceManual() {
+		if (!smartReplacePlan) return;
+		const plan = smartReplacePlan;
+		smartReplacePlan = null;
+		replacingPlan = plan;
 		openSlot = {
 			dayIdx: plan.day_index,
 			meal: plan.meal_key as MealKey,
@@ -247,14 +272,30 @@
 
 	// ── Копирование недели / дня ──────────────────────────────────────────
 	type CopyTarget = 'next' | 'manual';
+	type CopyTab = 'toWeek' | 'fromPersona';
+	type MergeMode = 'replace' | 'fill';
 
 	// Week copy
 	let showCopyWeekPopover = $state(false);
+	let copyWeekTab = $state<CopyTab>('toWeek');
 	let copyWeekTarget = $state<CopyTarget>('next');
 	let copyWeekManual = $state('');
 	let copyWeekConfirm = $state(false);
 	let copyWeekPending = $state<{ targetWeekId: string } | null>(null);
 	let copyingWeek = $state(false);
+
+	// Cross-persona copy
+	let copyFromPersonaId = $state<number | null>(null);
+	let copyFromSourceWeek = $state<'current' | 'prev'>('current');
+	let copyFromMergeMode = $state<MergeMode>('replace');
+	let copyFromConfirm = $state(false);
+	let copyFromPending = $state<{
+		sourcePersonaId: number;
+		sourcePersonaName: string;
+		sourceWeekId: string;
+		mergeMode: MergeMode;
+		previewCount: number;
+	} | null>(null);
 
 	// Day copy
 	let showCopyDayPopover = $state(false);
@@ -519,6 +560,131 @@
 			return;
 		}
 		await handleCopyWeekConfirmed(targetWeekId);
+	}
+
+	function handleCopyFromPersonaClick() {
+		if (!activePersona || copyFromPersonaId === null) return;
+		const sourcePersona = personas.find((p) => p.id === copyFromPersonaId);
+		if (!sourcePersona) return;
+		const sourceWeekId = copyFromSourceWeek === 'prev' ? offsetWeekId(weekId, -1) : weekId;
+		const sourceRows: MenuPlanRow[] = [];
+		for (const [key, rows] of localPlans) {
+			if (key.startsWith(`${copyFromPersonaId}__${sourceWeekId}__`)) sourceRows.push(...rows);
+		}
+		let previewCount = sourceRows.length;
+		if (copyFromMergeMode === 'fill') {
+			previewCount = sourceRows.filter((r) => {
+				const k = slotKey(activePersona.id, weekId, r.day_index, r.meal_key as MealKey);
+				return (localPlans.get(k) ?? []).length === 0;
+			}).length;
+		}
+		showCopyWeekPopover = false;
+		copyFromPending = {
+			sourcePersonaId: copyFromPersonaId,
+			sourcePersonaName: sourcePersona.name,
+			sourceWeekId,
+			mergeMode: copyFromMergeMode,
+			previewCount
+		};
+		copyFromConfirm = true;
+	}
+
+	async function handleCopyFromPersonaConfirmed() {
+		if (!activePersona || !copyFromPending) return;
+		const { sourcePersonaId, sourceWeekId, mergeMode } = copyFromPending;
+		copyingWeek = true;
+		copyFromConfirm = false;
+		const pending = copyFromPending;
+		copyFromPending = null;
+		try {
+			const persona = activePersona;
+			const sourceRows: MenuPlanRow[] = [];
+			for (const [key, rows] of localPlans) {
+				if (key.startsWith(`${sourcePersonaId}__${sourceWeekId}__`)) sourceRows.push(...rows);
+			}
+			if (sourceRows.length === 0) return;
+			const snapshot = new Map(localPlans);
+
+			const rowsToInsert =
+				mergeMode === 'fill'
+					? sourceRows.filter((r) => {
+							const k = slotKey(persona.id, weekId, r.day_index, r.meal_key as MealKey);
+							return (localPlans.get(k) ?? []).length === 0;
+						})
+					: sourceRows;
+
+			if (rowsToInsert.length === 0) return;
+
+			if (mergeMode === 'replace') {
+				await page.data.supabase
+					.from('menu_plans')
+					.delete()
+					.eq('persona_id', persona.id)
+					.eq('week_label', weekId);
+			}
+
+			const inserts = rowsToInsert.map((r) => ({
+				persona_id: persona.id,
+				week_label: weekId,
+				day_index: r.day_index,
+				meal_key: r.meal_key,
+				dish_name: r.dish_name,
+				dish_photo: r.dish_photo,
+				dish_category: r.dish_category,
+				kcal: r.kcal,
+				protein: r.protein,
+				fat: r.fat,
+				carbs: r.carbs,
+				cost: r.cost,
+				grams: r.grams,
+				sort_order: r.sort_order
+			}));
+
+			const { data: inserted } = await page.data.supabase
+				.from('menu_plans')
+				.insert(inserts)
+				.select('id, day_index, meal_key, dish_name');
+
+			if (!inserted || inserted.length === 0) {
+				localPlans = snapshot;
+				showErrorToast('Ошибка при копировании. Попробуйте ещё раз.');
+				return;
+			}
+
+			const next = new Map(localPlans);
+			if (mergeMode === 'replace') {
+				for (const [k] of next) {
+					if (k.startsWith(`${persona.id}__${weekId}__`)) next.delete(k);
+				}
+			}
+			const usedIndices = new Map<string, number>();
+			for (const row of inserted) {
+				const groupKey = `${row.day_index}__${row.meal_key}__${row.dish_name}`;
+				const usedCount = usedIndices.get(groupKey) ?? 0;
+				const candidates = rowsToInsert.filter(
+					(r) =>
+						r.day_index === row.day_index &&
+						r.meal_key === row.meal_key &&
+						r.dish_name === row.dish_name
+				);
+				const src = candidates[usedCount];
+				usedIndices.set(groupKey, usedCount + 1);
+				if (!src) continue;
+				const k = slotKey(persona.id, weekId, row.day_index, row.meal_key as MealKey);
+				const arr = next.get(k) ?? [];
+				arr.push({ ...src, id: row.id, week_label: weekId, persona_id: persona.id });
+				next.set(k, arr);
+			}
+			localPlans = next;
+			const srcName = pending.sourcePersonaName;
+			const modeLabel = mergeMode === 'fill' ? 'дополнено' : 'скопировано';
+			showToast(
+				`Меню ${modeLabel} из «${srcName}»`,
+				inserted.map((r: { id: number }) => r.id)
+			);
+		} finally {
+			copyingWeek = false;
+		}
 	}
 
 	async function handleCopyDayConfirmed(targetWeekId: string, targetDayIdx: number) {
@@ -825,8 +991,37 @@
 		class="flex items-center justify-between gap-3 px-4"
 		style="height: 56px; background: var(--color-bg-card); border-bottom: 1px solid var(--color-border);"
 	>
-		<!-- Лево: стрелка + метка + стрелка -->
+		<!-- Лево: переключатель вид + стрелка + метка + стрелка -->
 		<div class="flex min-w-0 flex-1 items-center gap-2">
+			<!-- Сегментный переключатель -->
+			<div
+				class="flex shrink-0 overflow-hidden rounded-lg"
+				style="background: var(--color-bg-page); border: 1px solid var(--color-border);"
+			>
+				<button
+					type="button"
+					onclick={() => switchView('week')}
+					class="px-3 py-1.5 text-xs font-semibold transition-all"
+					style="
+            background: {viewMode === 'week' ? 'var(--color-green-primary)' : 'transparent'};
+            color:      {viewMode === 'week'
+						? 'var(--color-text-inverse)'
+						: 'var(--color-text-muted)'};
+          ">Неделя</button
+				>
+				<button
+					type="button"
+					onclick={() => switchView('day')}
+					class="px-3 py-1.5 text-xs font-semibold transition-all"
+					style="
+            background: {viewMode === 'day' ? 'var(--color-green-primary)' : 'transparent'};
+            color:      {viewMode === 'day'
+						? 'var(--color-text-inverse)'
+						: 'var(--color-text-muted)'};
+          ">День</button
+				>
+			</div>
+
 			<button
 				onclick={prevPeriod}
 				class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors"
@@ -899,39 +1094,11 @@
 			</button>
 		</div>
 
-		<!-- Право: view toggle + кнопка копирования + кнопка генерации -->
+		<!-- Право: кнопка копирования + кнопка генерации -->
 		<div class="flex shrink-0 items-center gap-2">
-			<!-- Сегментный переключатель -->
-			<div
-				class="flex overflow-hidden rounded-lg"
-				style="background: var(--color-bg-page); border: 1px solid var(--color-border);"
-			>
-				<button
-					type="button"
-					onclick={() => switchView('week')}
-					class="px-3 py-1.5 text-xs font-semibold transition-all"
-					style="
-            background: {viewMode === 'week' ? 'var(--color-green-primary)' : 'transparent'};
-            color:      {viewMode === 'week'
-						? 'var(--color-text-inverse)'
-						: 'var(--color-text-muted)'};
-          ">Неделя</button
-				>
-				<button
-					type="button"
-					onclick={() => switchView('day')}
-					class="px-3 py-1.5 text-xs font-semibold transition-all"
-					style="
-            background: {viewMode === 'day' ? 'var(--color-green-primary)' : 'transparent'};
-            color:      {viewMode === 'day'
-						? 'var(--color-text-inverse)'
-						: 'var(--color-text-muted)'};
-          ">День</button
-				>
-			</div>
 
-			<!-- Кнопка «Копировать неделю» + попover -->
-			{#if viewMode === 'week'}
+			<!-- Кнопка «Копировать неделю» + поповер -->
+			{#if viewMode === 'week' && canEdit}
 				<div class="relative">
 					<button
 						type="button"
@@ -939,6 +1106,10 @@
 							showCopyWeekPopover = !showCopyWeekPopover;
 							copyWeekTarget = 'next';
 							copyWeekManual = '';
+							copyWeekTab = 'toWeek';
+							copyFromPersonaId = personas.find((p) => p.id !== activePersona?.id)?.id ?? null;
+							copyFromSourceWeek = 'current';
+							copyFromMergeMode = 'replace';
 						}}
 						disabled={copyingWeek || !activePersona}
 						class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all"
@@ -961,26 +1132,11 @@
 						aria-label="Копировать неделю"
 					>
 						{#if copyingWeek}
-							<span
-								class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"
-							></span>
+							<span class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
 						{:else}
 							<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-								<rect
-									x="1"
-									y="3"
-									width="7"
-									height="8"
-									rx="1.5"
-									stroke="currentColor"
-									stroke-width="1.4"
-								/>
-								<path
-									d="M4 3V2a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H9"
-									stroke="currentColor"
-									stroke-width="1.4"
-									stroke-linecap="round"
-								/>
+								<rect x="1" y="3" width="7" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
+								<path d="M4 3V2a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
 							</svg>
 						{/if}
 						Копировать
@@ -991,66 +1147,126 @@
 						<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 						<div class="fixed inset-0 z-40" onclick={() => (showCopyWeekPopover = false)}></div>
 						<div
-							class="absolute top-full right-0 z-50 mt-1.5 rounded-xl p-4 shadow-lg"
-							style="width: 240px; background: var(--color-bg-card); border: 1px solid var(--color-border); box-shadow: var(--shadow-modal);"
+							class="absolute top-full right-0 z-50 mt-1.5 rounded-xl shadow-lg"
+							style="width: 272px; background: var(--color-bg-card); border: 1px solid var(--color-border); box-shadow: var(--shadow-modal); overflow: hidden;"
 						>
-							<p class="mb-3 text-xs font-semibold" style="color: var(--color-text-primary);">
-								Скопировать на:
-							</p>
-							<label
-								class="mb-2 flex cursor-pointer items-center gap-2 text-xs"
-								style="color: var(--color-text-primary);"
-							>
-								<input
-									type="radio"
-									bind:group={copyWeekTarget}
-									value="next"
-									class="accent-green-700"
-								/>
-								Следующая неделя
-								<span class="ml-auto font-mono text-xs" style="color: var(--color-text-muted);"
-									>{offsetWeekId(weekId, 1)}</span
-								>
-							</label>
-							<label
-								class="mb-3 flex cursor-pointer items-center gap-2 text-xs"
-								style="color: var(--color-text-primary);"
-							>
-								<input
-									type="radio"
-									bind:group={copyWeekTarget}
-									value="manual"
-									class="accent-green-700"
-								/>
-								Ввести вручную
-							</label>
-							{#if copyWeekTarget === 'manual'}
-								<input
-									type="text"
-									bind:value={copyWeekManual}
-									placeholder="2026-W16"
-									class="mb-3 w-full rounded-lg px-3 py-1.5 text-xs"
-									style="border: 1px solid var(--color-border); background: var(--color-bg-input); color: var(--color-text-primary); outline: none;"
-								/>
-							{/if}
-							<button
-								type="button"
-								onclick={handleCopyWeek}
-								disabled={copyWeekTarget === 'manual' &&
-									!/^\d{4}-W\d{2}$/.test(copyWeekManual.trim())}
-								class="w-full rounded-lg py-1.5 text-xs font-semibold transition-colors"
-								style="background: var(--color-green-dark); color: var(--color-text-inverse); opacity: {copyWeekTarget ===
-									'manual' && !/^\d{4}-W\d{2}$/.test(copyWeekManual.trim())
-									? '0.5'
-									: '1'};">Скопировать</button
-							>
+							<!-- Табы -->
+							<div class="flex" style="border-bottom: 1px solid var(--color-border);">
+								<button
+									type="button"
+									onclick={() => (copyWeekTab = 'toWeek')}
+									class="flex-1 py-2.5 text-xs font-semibold transition-colors"
+									style="background: {copyWeekTab === 'toWeek' ? 'var(--color-bg-card)' : 'var(--color-bg-page)'}; border: none; border-right: 1px solid var(--color-border); cursor: pointer; color: {copyWeekTab === 'toWeek' ? 'var(--color-green-primary)' : 'var(--color-text-muted)'};"
+								>На другую неделю</button>
+								<button
+									type="button"
+									onclick={() => (copyWeekTab = 'fromPersona')}
+									class="flex-1 py-2.5 text-xs font-semibold transition-colors"
+									style="background: {copyWeekTab === 'fromPersona' ? 'var(--color-bg-card)' : 'var(--color-bg-page)'}; border: none; cursor: pointer; color: {copyWeekTab === 'fromPersona' ? 'var(--color-green-primary)' : 'var(--color-text-muted)'};"
+								>Из другой персоны</button>
+							</div>
+
+							<div class="p-4">
+								{#if copyWeekTab === 'toWeek'}
+									<!-- ── Вкладка: скопировать НА другую неделю ── -->
+									<p class="mb-3 text-xs font-semibold" style="color: var(--color-text-primary);">Скопировать на:</p>
+									<label class="mb-2 flex cursor-pointer items-center gap-2 text-xs" style="color: var(--color-text-primary);">
+										<input type="radio" bind:group={copyWeekTarget} value="next" class="accent-green-700"/>
+										Следующая неделя
+										<span class="ml-auto font-mono text-xs" style="color: var(--color-text-muted);">{offsetWeekId(weekId, 1)}</span>
+									</label>
+									<label class="mb-3 flex cursor-pointer items-center gap-2 text-xs" style="color: var(--color-text-primary);">
+										<input type="radio" bind:group={copyWeekTarget} value="manual" class="accent-green-700"/>
+										Ввести вручную
+									</label>
+									{#if copyWeekTarget === 'manual'}
+										<input
+											type="text"
+											bind:value={copyWeekManual}
+											placeholder="2026-W16"
+											class="mb-3 w-full rounded-lg px-3 py-1.5 text-xs"
+											style="border: 1px solid var(--color-border); background: var(--color-bg-input); color: var(--color-text-primary); outline: none;"
+										/>
+									{/if}
+									<button
+										type="button"
+										onclick={handleCopyWeek}
+										disabled={copyWeekTarget === 'manual' && !/^\d{4}-W\d{2}$/.test(copyWeekManual.trim())}
+										class="w-full rounded-lg py-1.5 text-xs font-semibold"
+										style="background: var(--color-green-dark); color: var(--color-text-inverse); opacity: {copyWeekTarget === 'manual' && !/^\d{4}-W\d{2}$/.test(copyWeekManual.trim()) ? '0.5' : '1'};"
+									>Скопировать</button>
+
+								{:else}
+									<!-- ── Вкладка: скопировать ИЗ другой персоны ── -->
+									{@const otherPersonas = personas.filter((p) => p.id !== activePersona?.id)}
+									{#if otherPersonas.length === 0}
+										<p class="py-4 text-center text-xs" style="color: var(--color-text-muted);">Нет других персон в домохозяйстве</p>
+									{:else}
+										<p class="mb-2 text-xs font-semibold" style="color: var(--color-text-primary);">Персона-источник:</p>
+										<div class="mb-3 flex flex-col gap-1">
+											{#each otherPersonas as p}
+												{@const srcWeekId = copyFromSourceWeek === 'prev' ? offsetWeekId(weekId, -1) : weekId}
+												{@const srcCount = (() => { let n = 0; for (const [k, rows] of localPlans) { if (k.startsWith(`${p.id}__${srcWeekId}__`)) n += rows.length; } return n; })()}
+												<label
+													class="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-xs transition-colors"
+													style="background: {copyFromPersonaId === p.id ? 'var(--color-green-tint)' : 'var(--color-bg-page)'}; border: 1px solid {copyFromPersonaId === p.id ? 'var(--color-green-tint-border)' : 'var(--color-border)'}; color: var(--color-text-primary); opacity: {srcCount === 0 ? '0.45' : '1'};"
+												>
+													<input type="radio" bind:group={copyFromPersonaId} value={p.id} disabled={srcCount === 0} class="accent-green-700"/>
+													<span class="flex-1 font-semibold">{p.name}</span>
+													<span style="color: var(--color-text-muted);">
+														{srcCount > 0 ? `${srcCount} блюд` : 'нет меню'}
+													</span>
+												</label>
+											{/each}
+										</div>
+
+										<p class="mb-2 text-xs font-semibold" style="color: var(--color-text-primary);">Неделя источника:</p>
+										<div class="mb-3 flex flex-col gap-1">
+											<label class="flex cursor-pointer items-center gap-2 text-xs" style="color: var(--color-text-primary);">
+												<input type="radio" bind:group={copyFromSourceWeek} value="current" class="accent-green-700"/>
+												Текущая
+												<span class="ml-auto font-mono text-xs" style="color: var(--color-text-muted);">{weekId}</span>
+											</label>
+											<label class="flex cursor-pointer items-center gap-2 text-xs" style="color: var(--color-text-primary);">
+												<input type="radio" bind:group={copyFromSourceWeek} value="prev" class="accent-green-700"/>
+												Предыдущая
+												<span class="ml-auto font-mono text-xs" style="color: var(--color-text-muted);">{offsetWeekId(weekId, -1)}</span>
+											</label>
+										</div>
+
+										<p class="mb-2 text-xs font-semibold" style="color: var(--color-text-primary);">Режим вставки:</p>
+										<div class="mb-4 flex flex-col gap-1">
+											<label class="flex cursor-pointer items-center gap-2 text-xs" style="color: var(--color-text-primary);">
+												<input type="radio" bind:group={copyFromMergeMode} value="replace" class="accent-green-700"/>
+												<span>
+													<strong>Заменить</strong> — перезаписать текущее меню
+												</span>
+											</label>
+											<label class="flex cursor-pointer items-center gap-2 text-xs" style="color: var(--color-text-primary);">
+												<input type="radio" bind:group={copyFromMergeMode} value="fill" class="accent-green-700"/>
+												<span>
+													<strong>Дополнить</strong> — только пустые слоты
+												</span>
+											</label>
+										</div>
+
+										<button
+											type="button"
+											onclick={handleCopyFromPersonaClick}
+											disabled={copyFromPersonaId === null}
+											class="w-full rounded-lg py-1.5 text-xs font-semibold"
+											style="background: var(--color-green-dark); color: var(--color-text-inverse); opacity: {copyFromPersonaId === null ? '0.45' : '1'};"
+										>Скопировать</button>
+									{/if}
+								{/if}
+							</div>
 						</div>
 					{/if}
 				</div>
 			{/if}
 
 			<!-- Кнопка «Копировать день» (day mode) -->
-			{#if viewMode === 'day'}
+			{#if viewMode === 'day' && canEdit}
 				<div class="relative">
 					<button
 						type="button"
@@ -1189,6 +1405,7 @@
 			{/if}
 
 			<!-- Кнопка генерации -->
+			{#if canEdit}
 			<button
 				onclick={handleGenerate}
 				disabled={generating || !activePersona}
@@ -1225,6 +1442,7 @@
 					Сгенерировать
 				{/if}
 			</button>
+			{/if}
 		</div>
 	</div>
 
@@ -1361,12 +1579,13 @@
 											cost={plan.cost ?? 0}
 											grams={plan.grams || undefined}
 											photo={plan.dish_photo ?? undefined}
-											onremove={() => handleRemove(plan)}
+											onremove={() => { if (canEdit) handleRemove(plan); }}
 											onclick={() => openDetail(plan)}
 										/>
 									{/each}
 
 									<!-- Кнопка + добавить -->
+									{#if canEdit}
 									<button
 										onclick={() => openModal(dayIdx, meal)}
 										class="w-full cursor-pointer text-left transition-all"
@@ -1392,6 +1611,7 @@
 									>
 										+ блюдо
 									</button>
+									{/if}
 								</div>
 							</div>
 						{/each}
@@ -1677,6 +1897,7 @@
 										</div>
 
 										<!-- Удалить -->
+										{#if canEdit}
 										<button
 											type="button"
 											onclick={(e) => {
@@ -1704,10 +1925,12 @@
 												/>
 											</svg>
 										</button>
+										{/if}
 									</div>
 								{/each}
 
 								<!-- + добавить блюдо -->
+								{#if canEdit}
 								<button
 									type="button"
 									onclick={() => openModal(viewDayIdx, meal)}
@@ -1737,6 +1960,7 @@
 									</svg>
 									Добавить блюдо
 								</button>
+								{/if}
 							</div>
 						</div>
 					{/each}
@@ -1941,6 +2165,18 @@
 	{/if}
 </div>
 
+<!-- ── Умная замена блюда ─────────────────────────────────────────────── -->
+{#if smartReplacePlan}
+	<SmartReplaceModal
+		sourcePlan={smartReplacePlan}
+		catalog={(page.data.foodCatalog ?? []) as Dish[]}
+		customDishes={page.data.customDishes ?? []}
+		onreplace={(dish, grams) => handleSmartReplace(dish, grams)}
+		onmanual={handleSmartReplaceManual}
+		onclose={() => (smartReplacePlan = null)}
+	/>
+{/if}
+
 <!-- ── Модалка выбора блюда ──────────────────────────────────────────── -->
 {#if openSlot}
 	<MealModal
@@ -2080,6 +2316,61 @@
 					class="btn-primary"
 					style="width: auto; padding: 10px 20px;">Перезаписать</button
 				>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- ── Подтверждение копирования из другой персоны ───────────────────── -->
+{#if copyFromConfirm && copyFromPending}
+	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+	<div
+		class="fixed inset-0 flex items-center justify-center px-4"
+		style="background: var(--color-overlay); z-index: var(--z-modal);"
+		onclick={() => { copyFromConfirm = false; copyFromPending = null; }}
+	>
+		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+		<div
+			class="modal-enter w-full max-w-sm"
+			style="background: var(--color-bg-card); border-radius: var(--radius-xl); box-shadow: var(--shadow-modal); padding: 28px;"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<h3 class="mb-2 font-semibold" style="font-size: 18px; color: var(--color-text-primary);">
+				{copyFromPending.mergeMode === 'replace' ? 'Заменить меню?' : 'Дополнить меню?'}
+			</h3>
+			<p class="mb-2 text-sm" style="color: var(--color-text-muted); line-height: 1.6;">
+				{#if copyFromPending.mergeMode === 'replace'}
+					Всё меню персоны <strong>{activePersona?.name}</strong> на неделе <strong>{weekId}</strong> будет заменено меню из <strong>{copyFromPending.sourcePersonaName}</strong>.
+				{:else}
+					Пустые слоты в меню <strong>{activePersona?.name}</strong> ({weekId}) будут заполнены из <strong>{copyFromPending.sourcePersonaName}</strong>.
+				{/if}
+			</p>
+			{#if copyFromPending.previewCount > 0}
+				<div class="mb-6 flex items-center gap-2 rounded-lg px-3 py-2" style="background: var(--color-green-tint); border: 1px solid var(--color-green-tint-border);">
+					<svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0;color:var(--color-green-primary);"><path d="M2 7l3.5 3.5 6.5-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+					<span class="text-xs font-semibold" style="color: var(--color-green-primary);">
+						{copyFromPending.previewCount} {copyFromPending.previewCount === 1 ? 'блюдо' : copyFromPending.previewCount < 5 ? 'блюда' : 'блюд'} будет скопировано
+					</span>
+				</div>
+			{:else}
+				<div class="mb-6 rounded-lg px-3 py-2" style="background: var(--color-bg-page); border: 1px solid var(--color-border);">
+					<p class="text-xs" style="color: var(--color-text-muted);">Нет блюд для копирования (все слоты уже заполнены)</p>
+				</div>
+			{/if}
+			<div class="flex justify-end gap-3">
+				<button
+					type="button"
+					onclick={() => { copyFromConfirm = false; copyFromPending = null; }}
+					class="btn-secondary"
+					style="width: auto; padding: 10px 20px;">Отмена</button>
+				<button
+					type="button"
+					disabled={copyFromPending.previewCount === 0}
+					onclick={handleCopyFromPersonaConfirmed}
+					class="btn-primary"
+					style="width: auto; padding: 10px 20px; opacity: {copyFromPending.previewCount === 0 ? '0.45' : '1'};">
+					{copyFromPending.mergeMode === 'replace' ? 'Заменить' : 'Дополнить'}
+				</button>
 			</div>
 		</div>
 	</div>

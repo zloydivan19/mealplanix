@@ -1,11 +1,12 @@
 <script lang="ts">
   import type { Dish } from '$lib/types/dish.js';
-  import type { CustomDish, MenuPlan } from '$lib/types/database.js';
+  import type { CustomDish } from '$lib/types/database.js';
   import { findSimilarDishes, scaleDish, customToDish } from '$lib/utils/generate.js';
   import type { SimilarDish } from '$lib/utils/generate.js';
+  import type { MenuPlanRow } from '../../routes/+page.server.js';
 
   interface Props {
-    sourcePlan:   MenuPlan;
+    sourcePlan:   MenuPlanRow;
     catalog:      Dish[];
     customDishes: CustomDish[];
     onreplace:    (dish: Dish, grams: number) => void;

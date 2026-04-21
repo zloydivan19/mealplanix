@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Dish } from '$lib/types/dish.js';
   import type { CustomDish, MenuPlan } from '$lib/types/database.js';
-  import { findSimilarDishes, scaleDish } from '$lib/utils/generate.js';
+  import { findSimilarDishes, scaleDish, customToDish } from '$lib/utils/generate.js';
   import type { SimilarDish } from '$lib/utils/generate.js';
 
   interface Props {
@@ -15,27 +15,7 @@
 
   let { sourcePlan, catalog, customDishes, onreplace, onmanual, onclose }: Props = $props();
 
-  function customToDishLocal(cd: CustomDish, idx: number): Dish {
-    const d = cd.data;
-    return {
-      id:                -(idx + 1),
-      name:              d.name,
-      category:          d.category,
-      kcal_per_100g:     d.kcal_per_100g,
-      protein_per_100g:  d.protein_per_100g,
-      fat_per_100g:      d.fat_per_100g,
-      carbs_per_100g:    d.carbs_per_100g,
-      portion_default_g: d.portion_default_g,
-      portion_min_g:     50,
-      portion_max_g:     1000,
-      cost_per_100g:     d.cost_per_100g,
-      photo:             undefined,
-      ingredients:       d.ingredients ?? [],
-      _custom:           true,
-    };
-  }
-
-  const customAsDishes = $derived(customDishes.map(customToDishLocal));
+  const customAsDishes = $derived(customDishes.map(customToDish));
 
   const catalogMatches = $derived(
     findSimilarDishes(

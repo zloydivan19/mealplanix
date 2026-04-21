@@ -25,7 +25,7 @@ interface GenerateOptions {
 }
 
 /** Converts a CustomDish DB row to Dish runtime format */
-function customToDish(cd: CustomDish, idx: number): Dish {
+export function customToDish(cd: CustomDish, idx: number): Dish {
   const d = cd.data;
   return {
     id:                -(idx + 1),

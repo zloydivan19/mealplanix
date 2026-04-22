@@ -18,9 +18,12 @@
 	import MealCard from '$lib/components/MealCard.svelte';
 	import MealModal from '$lib/components/MealModal.svelte';
 	import SmartReplaceModal from '$lib/components/SmartReplaceModal.svelte';
+	import FridgeSelectModal from '$lib/components/FridgeSelectModal.svelte';
 	import DishDetailModal from '$lib/components/DishDetailModal.svelte';
 	import type { Dish } from '$lib/types/dish.js';
-	import { generateWeekPlan } from '$lib/utils/generate.js';
+	import { generateWeekPlan, buildFridgeHints, customToDish } from '$lib/utils/generate.js';
+	import type { FridgeRow } from '$lib/types/database.js';
+	import type { FridgeHint } from '$lib/utils/generate.js';
 	import { tick } from 'svelte';
 	import { browser } from '$app/environment';
 
@@ -143,6 +146,11 @@
 	let openSlot = $state<OpenSlot | null>(null);
 	let replacingPlan = $state<MenuPlanRow | null>(null); // план, который заменяем
 	let smartReplacePlan = $state<MenuPlanRow | null>(null);
+	let fridgeModalOpen = $state(false);
+	let splitDropOpen   = $state(false);
+
+	const fridgeItems = $derived((page.data.fridgeItems ?? []) as FridgeRow[]);
+	const hasFridge   = $derived(fridgeItems.length > 0);
 
 	function openModal(dayIdx: number, meal: MealKey) {
 		openSlot = {
@@ -815,7 +823,21 @@
 		await runGenerate();
 	}
 
-	async function runGenerate() {
+	function handleFridgeGenerate(selected: FridgeRow[]) {
+		fridgeModalOpen = false;
+		splitDropOpen   = false;
+
+		const allDishes: Dish[] = [
+			...((page.data.foodCatalog ?? []) as Dish[]),
+			...((page.data.customDishes ?? []) as import('$lib/types/database.js').CustomDish[])
+				.map((cd, i) => customToDish(cd, i)),
+		];
+
+		const hints = buildFridgeHints(selected, allDishes);
+		runGenerate(hints);
+	}
+
+	async function runGenerate(fridgeHints?: FridgeHint[]) {
 		// Закрываем диалог и ждём обновления DOM до любых тяжёлых операций
 		showGenConfirm = false;
 		await tick();
@@ -832,7 +854,8 @@
 				match_kcal: persona.match_kcal ?? true,
 				customDishes: (page.data.customDishes ??
 					[]) as import('$lib/types/database.js').CustomDish[],
-				foodCatalog: (page.data.foodCatalog ?? []) as Dish[]
+				foodCatalog: (page.data.foodCatalog ?? []) as Dish[],
+				fridgeHints,
 			});
 
 			// Оптимистично: группируем по ключу слота
@@ -1404,44 +1427,73 @@
 				</div>
 			{/if}
 
-			<!-- Кнопка генерации -->
+			<!-- Кнопка генерации (split) -->
 			{#if canEdit}
-			<button
-				onclick={handleGenerate}
-				disabled={generating || !activePersona}
-				class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all"
-				style="
-          background: var(--color-green-dark);
-          color: var(--color-text-inverse);
-          letter-spacing: 0.02em;
-          opacity: {generating ? '0.6' : '1'};
-        "
-				onmouseenter={(e) => {
-					if (!generating)
-						(e.currentTarget as HTMLElement).style.background = 'var(--color-green-primary)';
-				}}
-				onmouseleave={(e) => {
-					(e.currentTarget as HTMLElement).style.background = 'var(--color-green-dark)';
-				}}
-				aria-label="Сгенерировать меню"
-			>
-				{#if generating}
-					<span
-						class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent"
-					></span>
-					Генерирую...
-				{:else}
-					<svg width="12" height="12" viewBox="0 0 12 12" fill="none"
-						><path
-							d="M6 1v2M6 9v2M1 6h2M9 6h2M2.93 2.93l1.41 1.41M7.66 7.66l1.41 1.41M2.93 9.07l1.41-1.41M7.66 4.34l1.41-1.41"
-							stroke="currentColor"
-							stroke-width="1.5"
-							stroke-linecap="round"
-						/></svg
+			<div class="relative flex" style="gap: 2px;">
+				<!-- Основная кнопка — обычная генерация -->
+				<button
+					onclick={handleGenerate}
+					disabled={generating || !activePersona}
+					class="flex items-center gap-1.5 rounded-lg rounded-r-none px-3 py-1.5 text-xs font-semibold transition-all"
+					style="background: var(--color-green-dark); color: var(--color-text-inverse); letter-spacing: 0.02em; opacity: {generating ? '0.6' : '1'};"
+					onmouseenter={(e) => { if (!generating) (e.currentTarget as HTMLElement).style.background = 'var(--color-green-primary)'; }}
+					onmouseleave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-green-dark)'; }}
+					aria-label="Сгенерировать меню"
+				>
+					{#if generating}
+						<span class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+						Генерирую...
+					{:else}
+						<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v2M6 9v2M1 6h2M9 6h2M2.93 2.93l1.41 1.41M7.66 7.66l1.41 1.41M2.93 9.07l1.41-1.41M7.66 4.34l1.41-1.41" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+						Сгенерировать
+					{/if}
+				</button>
+
+				<!-- Стрелка-дропдаун -->
+				<button
+					onclick={() => (splitDropOpen = !splitDropOpen)}
+					disabled={generating || !activePersona}
+					class="flex items-center px-2 py-1.5 rounded-lg rounded-l-none text-xs font-semibold transition-all"
+					style="background: var(--color-green-dark); color: var(--color-text-inverse); opacity: {generating ? '0.6' : '1'}; border-left: 1px solid color-mix(in srgb, white 20%, transparent);"
+					aria-label="Дополнительные варианты генерации"
+				>
+					<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				</button>
+
+				<!-- Дропдаун-меню -->
+				{#if splitDropOpen}
+					<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+					<div
+						class="fixed inset-0"
+						style="z-index: 10;"
+						onclick={() => (splitDropOpen = false)}
+					></div>
+					<div
+						class="absolute top-full mt-1 right-0 rounded-lg overflow-hidden"
+						style="background: var(--color-bg-card); border: 1px solid var(--color-border); box-shadow: var(--shadow-modal); z-index: 20; min-width: 200px;"
 					>
-					Сгенерировать
+						<button
+							onclick={() => { splitDropOpen = false; handleGenerate(); }}
+							class="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-left transition-colors"
+							style="color: var(--color-text-primary);"
+							onmouseenter={(e) => (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-surface)'}
+							onmouseleave={(e) => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+						>
+							🎲 Сгенерировать случайно
+						</button>
+						<button
+							onclick={() => { splitDropOpen = false; if (hasFridge) fridgeModalOpen = true; }}
+							disabled={!hasFridge}
+							class="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-left transition-colors"
+							style="color: {hasFridge ? 'var(--color-green-dark)' : 'var(--color-text-muted)'}; opacity: {hasFridge ? '1' : '0.5'};"
+							onmouseenter={(e) => { if (hasFridge) (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-surface)'; }}
+							onmouseleave={(e) => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+						>
+							🧊 С учётом холодильника…
+						</button>
+					</div>
 				{/if}
-			</button>
+			</div>
 			{/if}
 		</div>
 	</div>
@@ -2165,6 +2217,14 @@
 	{/if}
 </div>
 
+{#if fridgeModalOpen}
+	<FridgeSelectModal
+		fridgeItems={fridgeItems}
+		ongenerate={handleFridgeGenerate}
+		onclose={() => (fridgeModalOpen = false)}
+	/>
+{/if}
+
 <!-- ── Умная замена блюда ─────────────────────────────────────────────── -->
 {#if smartReplacePlan}
 	<SmartReplaceModal
@@ -2265,7 +2325,7 @@
 				>
 				<button
 					type="button"
-					onclick={runGenerate}
+					onclick={() => runGenerate()}
 					class="btn-primary"
 					style="width: auto; padding: 10px 20px;">Сгенерировать</button
 				>

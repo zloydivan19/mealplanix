@@ -62,6 +62,8 @@ export function buildFridgeHints(
   for (const item of selected) {
     const nameLower = item.product_name.toLowerCase().trim();
 
+    if (nameLower.length < 3) continue;
+
     const matched = catalog.filter(dish =>
       dish.ingredients.some(ing => ing.name.toLowerCase().includes(nameLower))
     );
@@ -76,10 +78,10 @@ export function buildFridgeHints(
     let portionG = FRIDGE_FALLBACK_PORTION_G;
     for (const dish of matched) {
       const ing = dish.ingredients.find(i => i.name.toLowerCase().includes(nameLower) && (i.qty ?? 0) > 0);
-      if (ing?.qty) { portionG = ing.qty; break; }
+      if (ing) { portionG = ing.qty!; break; }
     }
 
-    const budget = Math.min(Math.floor(qtyG / portionG), 7);
+    const budget = Math.min(Math.floor(qtyG / portionG), 7); // cap at 7 days
     if (budget <= 0) continue;
 
     hints.push({
@@ -189,6 +191,8 @@ function prevDayIds(slots: GeneratedSlot[], dayIndex: number, category: string):
 export function generateWeekPlan(opts: GenerateOptions): GeneratedSlot[] {
   const { kcal_target, meal_ratios, carry_dinner_to_lunch, match_kcal, customDishes = [], foodCatalog = [], fridgeHints } = opts;
 
+  const activeHints = fridgeHints?.map(h => ({ ...h, dishIds: new Set(h.dishIds) }));
+
   const all: Dish[] = [
     ...foodCatalog,
     ...customDishes.map((cd, i) => customToDish(cd, i)),
@@ -216,13 +220,13 @@ export function generateWeekPlan(opts: GenerateOptions): GeneratedSlot[] {
     // ── Завтрак ───────────────────────────────────────────────────────────
     {
       const prevIds = prevDayIds(slots, day, 'breakfast');
-      const dish1   = pickDish(dishesByCat.breakfast, kcal_bf * 0.7, prevIds, match_kcal, fridgeHints);
+      const dish1   = pickDish(dishesByCat.breakfast, kcal_bf * 0.7, prevIds, match_kcal, activeHints);
       const s1      = scaleDish(dish1, kcal_bf * 0.7);
       slots.push({ day_index: day, meal_key: 'bf', ...s1 });
 
       const remaining = kcal_bf - s1.kcal;
       if (remaining >= 100) {
-        const dish2 = pickDish(dishesByCat.breakfast, remaining, [dish1.id], match_kcal, fridgeHints);
+        const dish2 = pickDish(dishesByCat.breakfast, remaining, [dish1.id], match_kcal, activeHints);
         const s2    = scaleDish(dish2, remaining);
         slots.push({ day_index: day, meal_key: 'bf', ...s2 });
       }
@@ -236,7 +240,7 @@ export function generateWeekPlan(opts: GenerateOptions): GeneratedSlot[] {
       }
       const prevSalad = prevDayIds(slots, day, 'salad');
       if (prevMain?.dish.standalone) {
-        const saladDish = pickDish(dishesByCat.salad, Math.round(kcal_ln * 0.20), prevSalad, match_kcal, fridgeHints);
+        const saladDish = pickDish(dishesByCat.salad, Math.round(kcal_ln * 0.20), prevSalad, match_kcal, activeHints);
         slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(saladDish, Math.round(kcal_ln * 0.20)) });
       } else {
         buildMealSlots(day, 'ln', kcal_ln, [
@@ -245,22 +249,22 @@ export function generateWeekPlan(opts: GenerateOptions): GeneratedSlot[] {
         ], {
           side:  prevDayIds(slots, day, 'side'),
           salad: prevSalad,
-        } as Record<DishCategory, number[]>, match_kcal, slots, dishesByCat, fridgeHints);
+        } as Record<DishCategory, number[]>, match_kcal, slots, dishesByCat, activeHints);
       }
     } else {
       const prevMain  = prevDayIds(slots, day, 'main');
       const prevSide  = prevDayIds(slots, day, 'side');
       const prevSalad = prevDayIds(slots, day, 'salad');
-      const mainDish  = pickDish(dishesByCat.main, Math.round(kcal_ln * 0.45), prevMain, match_kcal, fridgeHints);
+      const mainDish  = pickDish(dishesByCat.main, Math.round(kcal_ln * 0.45), prevMain, match_kcal, activeHints);
       if (mainDish.standalone) {
         slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(mainDish, Math.round(kcal_ln * 0.80)) });
-        const saladDish = pickDish(dishesByCat.salad, Math.round(kcal_ln * 0.20), prevSalad, match_kcal, fridgeHints);
+        const saladDish = pickDish(dishesByCat.salad, Math.round(kcal_ln * 0.20), prevSalad, match_kcal, activeHints);
         slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(saladDish, Math.round(kcal_ln * 0.20)) });
       } else {
         slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(mainDish, Math.round(kcal_ln * 0.45)) });
-        const sideDish  = pickDish(dishesByCat.side,  Math.round(kcal_ln * 0.35), prevSide,  match_kcal, fridgeHints);
+        const sideDish  = pickDish(dishesByCat.side,  Math.round(kcal_ln * 0.35), prevSide,  match_kcal, activeHints);
         slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(sideDish,  Math.round(kcal_ln * 0.35)) });
-        const saladDish = pickDish(dishesByCat.salad, Math.round(kcal_ln * 0.20), prevSalad, match_kcal, fridgeHints);
+        const saladDish = pickDish(dishesByCat.salad, Math.round(kcal_ln * 0.20), prevSalad, match_kcal, activeHints);
         slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(saladDish, Math.round(kcal_ln * 0.20)) });
       }
     }
@@ -272,17 +276,17 @@ export function generateWeekPlan(opts: GenerateOptions): GeneratedSlot[] {
     ], {
       main:  prevDayIds(slots, day, 'main'),
       salad: prevDayIds(slots, day, 'salad'),
-    } as Record<DishCategory, number[]>, match_kcal, slots, dishesByCat, fridgeHints);
+    } as Record<DishCategory, number[]>, match_kcal, slots, dishesByCat, activeHints);
 
     // ── Перекус ───────────────────────────────────────────────────────────
     {
       const prevIds = prevDayIds(slots, day, 'snack');
-      const dish1   = pickDish(dishesByCat.snack, kcal_sn, prevIds, match_kcal, fridgeHints);
+      const dish1   = pickDish(dishesByCat.snack, kcal_sn, prevIds, match_kcal, activeHints);
       const s1      = scaleDish(dish1, kcal_sn);
       slots.push({ day_index: day, meal_key: 'sn', ...s1 });
 
       if (kcal_sn - s1.kcal > kcal_sn * 0.4) {
-        const dish2 = pickDish(dishesByCat.snack, kcal_sn - s1.kcal, [dish1.id], match_kcal, fridgeHints);
+        const dish2 = pickDish(dishesByCat.snack, kcal_sn - s1.kcal, [dish1.id], match_kcal, activeHints);
         const s2    = scaleDish(dish2, kcal_sn - s1.kcal);
         slots.push({ day_index: day, meal_key: 'sn', ...s2 });
       }

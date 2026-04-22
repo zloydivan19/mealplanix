@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { FridgeRow } from '$lib/types/database.js';
+  import { browser } from '$app/environment';
 
   interface Props {
     fridgeItems: FridgeRow[];
@@ -8,6 +9,12 @@
   }
 
   let { fridgeItems, ongenerate, onclose }: Props = $props();
+
+  $effect(() => {
+    if (!browser) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  });
 
   let selectedIds = $state(new Set<number>(fridgeItems.map(f => f.id)));
 

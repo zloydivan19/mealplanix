@@ -806,6 +806,18 @@
 	let showGenConfirm = $state(false);
 	let generating = $state(false);
 
+	const anyInlineModalOpen = $derived(
+		showGenConfirm ||
+		(copyWeekConfirm && !!copyWeekPending) ||
+		(copyFromConfirm && !!copyFromPending) ||
+		(copyDayConfirm  && !!copyDayPending)
+	);
+	$effect(() => {
+		if (!browser || !anyInlineModalOpen) return;
+		document.body.style.overflow = 'hidden';
+		return () => { document.body.style.overflow = ''; };
+	});
+
 	function hasPlansThisWeek(): boolean {
 		if (!activePersona) return false;
 		for (const [key] of localPlans) {

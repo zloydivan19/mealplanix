@@ -4,6 +4,7 @@
   import { findSimilarDishes, scaleDish, customToDish } from '$lib/utils/generate.js';
   import type { SimilarDish } from '$lib/utils/generate.js';
   import type { MenuPlanRow } from '../../routes/+page.server.js';
+  import { browser } from '$app/environment';
 
   interface Props {
     sourcePlan:   MenuPlanRow;
@@ -15,6 +16,12 @@
   }
 
   let { sourcePlan, catalog, customDishes, onreplace, onmanual, onclose }: Props = $props();
+
+  $effect(() => {
+    if (!browser) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  });
 
   const customAsDishes = $derived(customDishes.map(customToDish));
 

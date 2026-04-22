@@ -5,6 +5,7 @@
   import type { CustomDish, CustomDishData } from '$lib/types/database.js';
   import { SHOPPING_CATEGORY_LABELS, SHOPPING_CATEGORY_ORDER, type ShoppingCategory } from '$lib/types/dish.js';
   import { detectCategory } from '$lib/utils/detectIngredientCategory.js';
+  import { browser } from '$app/environment';
 
   let customDishes = $derived((page.data.customDishes ?? []) as CustomDish[]);
 
@@ -77,6 +78,13 @@
   let deleteTarget = $state<CustomDish | null>(null);
   let saving       = $state(false);
   let saveError    = $state('');
+
+  const anyModalOpen = $derived(showModal || !!deleteTarget);
+  $effect(() => {
+    if (!browser || !anyModalOpen) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  });
 
   // Поля формы
   let fname       = $state('');

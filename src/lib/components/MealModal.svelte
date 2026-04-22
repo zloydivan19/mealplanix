@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { browser } from '$app/environment';
   import { MEAL_LABELS, type MealKey } from '$lib/utils/week.js';
   import type { Dish, DishCategory } from '$lib/types/dish.js';
   import type { CustomDish } from '$lib/types/database.js';
@@ -20,6 +21,12 @@
   }
 
   let { mealKey, dayLabel, onselect, onclose, foodCatalog = [] }: Props = $props();
+
+  $effect(() => {
+    if (!browser) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  });
 
   // Кастомные блюда из профиля
   let customDishes = $derived(

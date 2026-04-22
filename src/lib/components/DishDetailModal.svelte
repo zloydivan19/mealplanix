@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Dish } from '$lib/types/dish.js';
+  import { browser } from '$app/environment';
 
   interface Props {
     name:      string;
@@ -17,6 +18,12 @@
   }
 
   let { name, photo, kcal, protein, fat, carbs, grams, cost, dish, onclose, onremove, onreplace }: Props = $props();
+
+  $effect(() => {
+    if (!browser) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  });
 
   function handleBackdrop(e: MouseEvent) {
     if (e.target === e.currentTarget) onclose();

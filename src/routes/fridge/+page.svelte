@@ -2,6 +2,7 @@
   import { page } from '$app/state';
   import { invalidateAll } from '$app/navigation';
   import type { FridgeRow } from '$lib/types/database.js';
+  import { browser } from '$app/environment';
 
   let fridgeItems = $derived((page.data.fridgeItems ?? []) as FridgeRow[]);
   const householdId = $derived(page.data.householdId as string | null);
@@ -81,6 +82,13 @@
 
   // ── Удаление ─────────────────────────────────────────────────
   let deleteTarget = $state<FridgeRow | null>(null);
+
+  const anyModalOpen = $derived(showModal || !!deleteTarget);
+  $effect(() => {
+    if (!browser || !anyModalOpen) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  });
 
   async function confirmDelete() {
     if (!deleteTarget) return;

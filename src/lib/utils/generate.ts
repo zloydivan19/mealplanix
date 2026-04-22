@@ -1,5 +1,5 @@
 import type { Dish, DishCategory } from '$lib/types/dish.js';
-import type { CustomDish } from '$lib/types/database.js';
+import type { CustomDish, FridgeRow } from '$lib/types/database.js';
 import type { MealKey } from '$lib/utils/week.js';
 
 export interface GeneratedSlot {
@@ -15,6 +15,11 @@ export interface GeneratedSlot {
   dish_category: string;
 }
 
+export interface FridgeHint {
+  dishIds:   Set<number>;
+  slotsLeft: number;
+}
+
 interface GenerateOptions {
   kcal_target:           number;
   meal_ratios:           { bf: number; ln: number; dn: number };
@@ -22,6 +27,7 @@ interface GenerateOptions {
   match_kcal:            boolean;
   customDishes?:         CustomDish[];
   foodCatalog?:          Dish[];
+  fridgeHints?:          FridgeHint[];
 }
 
 /** Converts a CustomDish DB row to Dish runtime format */
@@ -43,6 +49,46 @@ export function customToDish(cd: CustomDish, idx: number): Dish {
     ingredients:       d.ingredients,
     _custom:           true,
   };
+}
+
+const FRIDGE_FALLBACK_PORTION_G = 150;
+
+export function buildFridgeHints(
+  selected: FridgeRow[],
+  catalog:  Dish[],
+): FridgeHint[] {
+  const hints: FridgeHint[] = [];
+
+  for (const item of selected) {
+    const nameLower = item.product_name.toLowerCase().trim();
+
+    const matched = catalog.filter(dish =>
+      dish.ingredients.some(ing => ing.name.toLowerCase().includes(nameLower))
+    );
+    if (matched.length === 0) continue;
+
+    // Normalise qty to grams
+    let qtyG = item.qty;
+    if (item.unit === 'кг') qtyG = item.qty * 1000;
+    else if (item.unit !== 'г') qtyG = FRIDGE_FALLBACK_PORTION_G; // шт, л, мл → fallback
+
+    // Take portion size from first matching dish ingredient that has qty > 0
+    let portionG = FRIDGE_FALLBACK_PORTION_G;
+    for (const dish of matched) {
+      const ing = dish.ingredients.find(i => i.name.toLowerCase().includes(nameLower) && (i.qty ?? 0) > 0);
+      if (ing?.qty) { portionG = ing.qty; break; }
+    }
+
+    const budget = Math.min(Math.floor(qtyG / portionG), 7);
+    if (budget <= 0) continue;
+
+    hints.push({
+      dishIds:   new Set(matched.map(d => d.id)),
+      slotsLeft: budget,
+    });
+  }
+
+  return hints;
 }
 
 /** Масштабирует блюдо до целевых ккал, зажимая порцию в реалистичном диапазоне */
@@ -72,10 +118,34 @@ function pickDish(
   target:     number,
   excludeIds: number[],
   matchKcal:  boolean,
+  hints?:     FridgeHint[],
 ): Dish {
   const pool = dishes.length > excludeIds.length
     ? dishes.filter(d => !excludeIds.includes(d.id))
     : dishes;
+
+  // Priority: dishes from active hints
+  if (hints) {
+    const activeHints = hints.filter(h => h.slotsLeft > 0);
+    const hintPool = pool.filter(d => activeHints.some(h => h.dishIds.has(d.id)));
+    if (hintPool.length > 0) {
+      const picked = matchKcal
+        ? (() => {
+            const sorted = [...hintPool].sort((a, b) =>
+              Math.abs(a.kcal_per_100g - target) - Math.abs(b.kcal_per_100g - target)
+            );
+            const top = sorted.slice(0, Math.min(3, sorted.length));
+            return top[Math.floor(Math.random() * top.length)];
+          })()
+        : hintPool[Math.floor(Math.random() * hintPool.length)];
+
+      // Decrement slotsLeft for all hints whose dishIds include picked
+      for (const h of activeHints) {
+        if (h.dishIds.has(picked.id)) h.slotsLeft--;
+      }
+      return picked;
+    }
+  }
 
   if (!matchKcal) {
     return pool[Math.floor(Math.random() * pool.length)];
@@ -99,10 +169,11 @@ function buildMealSlots(
   matchKcal:   boolean,
   slots:       GeneratedSlot[],
   dishesByCat: Record<DishCategory, Dish[]>,
+  hints?:      FridgeHint[],
 ) {
   for (const comp of components) {
     const targetKcal = Math.round(slotKcal * comp.ratio);
-    const dish = pickDish(dishesByCat[comp.category], targetKcal, prevIds[comp.category] ?? [], matchKcal);
+    const dish = pickDish(dishesByCat[comp.category], targetKcal, prevIds[comp.category] ?? [], matchKcal, hints);
     const scaled = scaleDish(dish, targetKcal);
     slots.push({ day_index: dayIndex, meal_key: mealKey, ...scaled });
   }
@@ -116,7 +187,7 @@ function prevDayIds(slots: GeneratedSlot[], dayIndex: number, category: string):
 }
 
 export function generateWeekPlan(opts: GenerateOptions): GeneratedSlot[] {
-  const { kcal_target, meal_ratios, carry_dinner_to_lunch, match_kcal, customDishes = [], foodCatalog = [] } = opts;
+  const { kcal_target, meal_ratios, carry_dinner_to_lunch, match_kcal, customDishes = [], foodCatalog = [], fridgeHints } = opts;
 
   const all: Dish[] = [
     ...foodCatalog,
@@ -145,13 +216,13 @@ export function generateWeekPlan(opts: GenerateOptions): GeneratedSlot[] {
     // ── Завтрак ───────────────────────────────────────────────────────────
     {
       const prevIds = prevDayIds(slots, day, 'breakfast');
-      const dish1   = pickDish(dishesByCat.breakfast, kcal_bf * 0.7, prevIds, match_kcal);
+      const dish1   = pickDish(dishesByCat.breakfast, kcal_bf * 0.7, prevIds, match_kcal, fridgeHints);
       const s1      = scaleDish(dish1, kcal_bf * 0.7);
       slots.push({ day_index: day, meal_key: 'bf', ...s1 });
 
       const remaining = kcal_bf - s1.kcal;
       if (remaining >= 100) {
-        const dish2 = pickDish(dishesByCat.breakfast, remaining, [dish1.id], match_kcal);
+        const dish2 = pickDish(dishesByCat.breakfast, remaining, [dish1.id], match_kcal, fridgeHints);
         const s2    = scaleDish(dish2, remaining);
         slots.push({ day_index: day, meal_key: 'bf', ...s2 });
       }
@@ -165,7 +236,7 @@ export function generateWeekPlan(opts: GenerateOptions): GeneratedSlot[] {
       }
       const prevSalad = prevDayIds(slots, day, 'salad');
       if (prevMain?.dish.standalone) {
-        const saladDish = pickDish(dishesByCat.salad, Math.round(kcal_ln * 0.20), prevSalad, match_kcal);
+        const saladDish = pickDish(dishesByCat.salad, Math.round(kcal_ln * 0.20), prevSalad, match_kcal, fridgeHints);
         slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(saladDish, Math.round(kcal_ln * 0.20)) });
       } else {
         buildMealSlots(day, 'ln', kcal_ln, [
@@ -174,22 +245,22 @@ export function generateWeekPlan(opts: GenerateOptions): GeneratedSlot[] {
         ], {
           side:  prevDayIds(slots, day, 'side'),
           salad: prevSalad,
-        } as Record<DishCategory, number[]>, match_kcal, slots, dishesByCat);
+        } as Record<DishCategory, number[]>, match_kcal, slots, dishesByCat, fridgeHints);
       }
     } else {
       const prevMain  = prevDayIds(slots, day, 'main');
       const prevSide  = prevDayIds(slots, day, 'side');
       const prevSalad = prevDayIds(slots, day, 'salad');
-      const mainDish  = pickDish(dishesByCat.main, Math.round(kcal_ln * 0.45), prevMain, match_kcal);
+      const mainDish  = pickDish(dishesByCat.main, Math.round(kcal_ln * 0.45), prevMain, match_kcal, fridgeHints);
       if (mainDish.standalone) {
         slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(mainDish, Math.round(kcal_ln * 0.80)) });
-        const saladDish = pickDish(dishesByCat.salad, Math.round(kcal_ln * 0.20), prevSalad, match_kcal);
+        const saladDish = pickDish(dishesByCat.salad, Math.round(kcal_ln * 0.20), prevSalad, match_kcal, fridgeHints);
         slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(saladDish, Math.round(kcal_ln * 0.20)) });
       } else {
         slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(mainDish, Math.round(kcal_ln * 0.45)) });
-        const sideDish  = pickDish(dishesByCat.side,  Math.round(kcal_ln * 0.35), prevSide,  match_kcal);
+        const sideDish  = pickDish(dishesByCat.side,  Math.round(kcal_ln * 0.35), prevSide,  match_kcal, fridgeHints);
         slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(sideDish,  Math.round(kcal_ln * 0.35)) });
-        const saladDish = pickDish(dishesByCat.salad, Math.round(kcal_ln * 0.20), prevSalad, match_kcal);
+        const saladDish = pickDish(dishesByCat.salad, Math.round(kcal_ln * 0.20), prevSalad, match_kcal, fridgeHints);
         slots.push({ day_index: day, meal_key: 'ln', ...scaleDish(saladDish, Math.round(kcal_ln * 0.20)) });
       }
     }
@@ -201,17 +272,17 @@ export function generateWeekPlan(opts: GenerateOptions): GeneratedSlot[] {
     ], {
       main:  prevDayIds(slots, day, 'main'),
       salad: prevDayIds(slots, day, 'salad'),
-    } as Record<DishCategory, number[]>, match_kcal, slots, dishesByCat);
+    } as Record<DishCategory, number[]>, match_kcal, slots, dishesByCat, fridgeHints);
 
     // ── Перекус ───────────────────────────────────────────────────────────
     {
       const prevIds = prevDayIds(slots, day, 'snack');
-      const dish1   = pickDish(dishesByCat.snack, kcal_sn, prevIds, match_kcal);
+      const dish1   = pickDish(dishesByCat.snack, kcal_sn, prevIds, match_kcal, fridgeHints);
       const s1      = scaleDish(dish1, kcal_sn);
       slots.push({ day_index: day, meal_key: 'sn', ...s1 });
 
       if (kcal_sn - s1.kcal > kcal_sn * 0.4) {
-        const dish2 = pickDish(dishesByCat.snack, kcal_sn - s1.kcal, [dish1.id], match_kcal);
+        const dish2 = pickDish(dishesByCat.snack, kcal_sn - s1.kcal, [dish1.id], match_kcal, fridgeHints);
         const s2    = scaleDish(dish2, kcal_sn - s1.kcal);
         slots.push({ day_index: day, meal_key: 'sn', ...s2 });
       }

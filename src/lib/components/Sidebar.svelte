@@ -97,7 +97,7 @@
         <img src="/favicon.png" alt="MealPlaniX" style="height: 36px; width: 36px; object-fit: contain;" />
       </div>
       <div class="sb-appname">
-        <span class="sb-appname-main">MealPlani</span><span class="sb-appname-accent">X</span>
+        <span class="sb-appname-main">MealPlani</span><span class="sb-appname-accent">X</span><span class="sb-appname-beta">beta</span>
       </div>
     </div>
     <!-- Mobile close -->
@@ -269,6 +269,17 @@
     font-weight: 800;
     letter-spacing: -0.03em;
     color: var(--color-green-primary);
+  }
+
+  .sb-appname-beta {
+    font-size: 9px;
+    font-weight: 300;
+    letter-spacing: 0.08em;
+    color: var(--color-text-muted);
+    margin-left: 4px;
+    vertical-align: middle;
+    position: relative;
+    top: -1px;
   }
 
   .collapsed .sb-appname {

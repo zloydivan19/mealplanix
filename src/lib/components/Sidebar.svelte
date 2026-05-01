@@ -94,7 +94,7 @@
     <!-- Brand: icon always visible, name only when expanded -->
     <div class="sb-brand">
       <div class="sb-logo-icon">
-        <img src="/favicon.png" alt="MealPlaniX" style="height: 36px; width: 36px; object-fit: contain; background: white; border-radius: 8px; padding: 2px;" />
+        <img src="/logo1.jpg" alt="MealPlaniX" style="height: 36px; width: 36px; object-fit: contain; border-radius: 8px; mix-blend-mode: multiply;" />
       </div>
       <div class="sb-appname">
         <span class="sb-appname-main">MealPlani</span><span class="sb-appname-accent">X</span><span class="sb-appname-beta">beta</span>

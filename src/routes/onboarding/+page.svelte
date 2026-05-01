@@ -106,7 +106,7 @@
     <!-- ШАГ 1 -->
     {#if step === 1}
       <div class="p-8 text-center" style="background: var(--color-bg-card); border-radius: var(--radius-xl); box-shadow: var(--shadow-card); border: 1px solid var(--color-border);">
-        <img src="/favicon.png" alt="MealPlaniX" class="mx-auto mb-4" style="width: 64px; height: 64px; background: white; border-radius: 16px; padding: 4px;" />
+        <img src="/logo1.jpg" alt="MealPlaniX" class="mx-auto mb-4" style="height: 80px; object-fit: contain; mix-blend-mode: multiply;" />
         <p class="font-bold mb-2" style="font-size: 26px; color: var(--color-text-primary); letter-spacing: -0.03em;">MealPlani<span style="color: var(--color-orange-accent);">X</span></p>
         <h1 class="font-bold mb-3" style="font-size: clamp(18px,3vw,22px); color: var(--color-green-primary);">
           Добро пожаловать!

@@ -68,10 +68,10 @@
 		<!-- Логотип -->
 		<div class="mb-8 text-center">
 			<img
-				src="/favicon.png"
+				src="/logo1.jpg"
 				alt="MealPlaniX"
 				class="mx-auto mb-3"
-				style="width: 56px; height: 56px; background: white; border-radius: 14px; padding: 4px;"
+				style="height: 80px; object-fit: contain; mix-blend-mode: multiply;"
 			/>
 			<p
 				class="mb-1 font-bold"

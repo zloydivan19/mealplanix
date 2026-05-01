@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { browser } from '$app/environment';
+  import { page } from '$app/state';
   import './layout.css';
   import type { LayoutData } from './$types.js';
   import Sidebar from '$lib/components/Sidebar.svelte';
@@ -38,13 +39,15 @@
   const FULL_W = 220;
   let sbW = $derived(sidebarCollapsed ? MINI_W : FULL_W);
 
+  const showSidebar = $derived(!!data.session && !page.url.pathname.startsWith('/onboarding'));
+
   async function handleSignOut() {
     await data.supabase.auth.signOut();
     window.location.replace('/auth');
   }
 </script>
 
-{#if data.session}
+{#if showSidebar}
   <Sidebar
     bind:collapsed={sidebarCollapsed}
     bind:open={sidebarOpen}

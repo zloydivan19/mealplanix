@@ -3,7 +3,24 @@
     "allow": [
       "Bash(pnpm install:*)",
       "Bash(pnpm svelte-kit:*)",
-      "Bash(pnpm lint:*)"
+      "Bash(pnpm lint:*)",
+      "Bash(curl -s -X POST https://oauth.fatsecret.com/connect/token -d 'grant_type=client_credentials&client_id=fa646d1ada8e42e4bb93c5dcb98b5cd7&client_secret=fd91bee3e15c4fdd81b21d889b276ca9&scope=basic' -H 'Content-Type: application/x-www-form-urlencoded')",
+      "Bash(node -e ' *)",
+      "Bash(bash \"C:/Users/Billi/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/skills/brainstorming/scripts/start-server.sh\" --project-dir \"d:/sites/Planmeal-v5\")",
+      "Bash(git -C d:/sites/Planmeal-v5 show --stat fe9e796)",
+      "Bash(git -C /d/sites/Planmeal-v5 log 60f2a7f..fe9e796 --oneline)",
+      "Bash(C:/Users/Billi/.claude/plugins/cache/claude-plugins-official/superpowers/b55764852ac7/skills/brainstorming/scripts/start-server.sh --project-dir d:/sites/Planmeal-v5)",
+      "Bash(grep -n 'state\\\\|let.*= $state' d:/sites/Planmeal-v5/src/routes/dishes/+page.svelte)",
+      "Bash(grep -n 'state\\\\|let.*= $state' d:/sites/Planmeal-v5/src/routes/fridge/+page.svelte)",
+      "Bash(grep -n '$props\\(\\)' d:/sites/Planmeal-v5/src/lib/components/MealModal.svelte)",
+      "Bash(grep -n '$props\\(\\)' d:/sites/Planmeal-v5/src/lib/components/DishDetailModal.svelte)",
+      "Bash(python3 -c ' *)",
+      "Bash(python -c ' *)",
+      "Bash(cat .env.example)",
+      "Bash(ls .env*)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Billi\\Documents\\game\\freddie-tagil\\assets\\images\\run"
     ]
   },
   "skillOverrides": {

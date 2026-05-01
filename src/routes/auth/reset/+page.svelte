@@ -71,7 +71,7 @@
 				src="/favicon.png"
 				alt="MealPlaniX"
 				class="mx-auto mb-3"
-				style="width: 56px; height: 56px;"
+				style="width: 56px; height: 56px; background: white; border-radius: 14px; padding: 4px;"
 			/>
 			<p
 				class="mb-1 font-bold"

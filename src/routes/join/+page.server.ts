@@ -104,10 +104,16 @@ export const actions: Actions = {
 			return fail(400, { error: 'Заявка уже отправлена. Ожидайте одобрения.' });
 		}
 
+		const { data: myPersona } = await locals.supabase
+			.from('personas')
+			.select('name')
+			.eq('user_id', user.id)
+			.maybeSingle();
+
 		const { error } = await locals.supabase.from('household_join_requests').insert({
 			household_id: householdId,
 			requester_user_id: user.id,
-			requester_name: user.email ?? user.id,
+			requester_name: myPersona?.name ?? user.email ?? user.id,
 			status: 'pending'
 		});
 

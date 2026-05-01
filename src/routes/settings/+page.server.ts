@@ -350,19 +350,9 @@ export const actions: Actions = {
 			return fail(400, { familyError: 'Нельзя удалить себя' });
 		}
 
-		const { data: targetMember } = await locals.supabase
-			.from('household_members')
-			.select('own_household_id')
-			.eq('user_id', targetUserId)
-			.eq('household_id', myMember.household_id)
-			.single();
-
-		if (!targetMember) return fail(404, { familyError: 'Участник не найден' });
-
-		const { error } = await locals.supabase
-			.from('household_members')
-			.update({ household_id: targetMember.own_household_id })
-			.eq('user_id', targetUserId);
+		const { error } = await locals.supabase.rpc('remove_household_member', {
+			p_target_user_id: targetUserId
+		});
 
 		if (error) return fail(400, { familyError: 'Не удалось удалить участника: ' + error.message });
 		return { removeMemberSuccess: true };
@@ -384,10 +374,7 @@ export const actions: Actions = {
 			return fail(400, { familyError: 'Вы уже в своём домохозяйстве' });
 		}
 
-		const { error } = await locals.supabase
-			.from('household_members')
-			.update({ household_id: myMember.own_household_id })
-			.eq('user_id', user.id);
+		const { error } = await locals.supabase.rpc('leave_household', {});
 
 		if (error) return fail(400, { familyError: 'Не удалось выйти: ' + error.message });
 		return { leaveFamilySuccess: true };
@@ -446,17 +433,13 @@ export const actions: Actions = {
 			return fail(403, { familyError: 'Нет доступа' });
 		if (joinReq.status !== 'pending') return fail(400, { familyError: 'Заявка уже обработана' });
 
-		const { error: memberError } = await locals.supabase
-			.from('household_members')
-			.update({ household_id: myMember.household_id })
-			.eq('user_id', joinReq.requester_user_id);
+		const { error: rpcError } = await locals.supabase.rpc('approve_household_join', {
+			p_request_id: requestId,
+			p_requester_user_id: joinReq.requester_user_id,
+			p_household_id: myMember.household_id
+		});
 
-		if (memberError) return fail(400, { familyError: 'Не удалось добавить участника: ' + memberError.message });
-
-		await locals.supabase
-			.from('household_join_requests')
-			.update({ status: 'approved' })
-			.eq('id', requestId);
+		if (rpcError) return fail(400, { familyError: 'Не удалось добавить участника: ' + rpcError.message });
 
 		return { approveSuccess: true };
 	},

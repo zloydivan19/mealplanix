@@ -19,7 +19,7 @@
 	async function handleLogin() {
 		errorMsg = '';
 		loading = true;
-		const { error } = await data.supabase.auth.signInWithPassword({ email, password });
+		const { error } = await data.supabase.auth.signInWithPassword({ email: email.trim(), password });
 		loading = false;
 		if (error) {
 			errorMsg = getErrorMessage(error.message);
@@ -34,7 +34,7 @@
 	async function handleRegister() {
 		errorMsg = '';
 		loading = true;
-		const { error } = await data.supabase.auth.signUp({ email, password });
+		const { error } = await data.supabase.auth.signUp({ email: email.trim(), password });
 		loading = false;
 		if (error) {
 			errorMsg = getErrorMessage(error.message);

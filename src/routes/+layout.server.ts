@@ -66,6 +66,10 @@ export const load: LayoutServerLoad = async ({ locals, url, cookies }) => {
 	}
 
 	// ── Загружаем персоны домохозяйства ──────────────────────
+	// Сценарии:
+	// 1. Владелец (isOwner): household personas + главные персоны гостей из их own_household_id
+	// 2. Гость (ownHouseholdId !== householdId): household personas + своя персона из own_household_id (первой, как активная)
+	// 3. Одиночка (isOwner, нет гостей): только household personas
 	let personas: Persona[] = [];
 	let persona: Persona | null = null;
 
@@ -80,16 +84,41 @@ export const load: LayoutServerLoad = async ({ locals, url, cookies }) => {
 		persona = personas.find((p) => p.user_id === user.id) ?? null;
 	}
 
-	// Если пользователь вступил в чужое хозяйство, его персона находится
-	// в собственном хозяйстве (own_household_id) — ищем там
-	if (!persona && ownHouseholdId && ownHouseholdId !== householdId) {
+	// Гость: своя персона в own_household_id — ставим первой как активную
+	if (ownHouseholdId && ownHouseholdId !== householdId) {
 		const { data: ownPersonaData } = await locals.supabase
 			.from('personas')
 			.select('*')
 			.eq('household_id', ownHouseholdId)
 			.eq('user_id', user.id)
 			.maybeSingle();
-		persona = (ownPersonaData as Persona | null) ?? null;
+		const ownPersona = (ownPersonaData as Persona | null) ?? null;
+		if (ownPersona) {
+			persona = ownPersona;
+			personas = [ownPersona, ...personas];
+		}
+	}
+
+	// Владелец: добавляем главные персоны гостей (из их own_household_id)
+	if (isOwner && householdId) {
+		const { data: guestMembers } = await locals.supabase
+			.from('household_members')
+			.select('own_household_id')
+			.eq('household_id', householdId)
+			.neq('own_household_id', householdId);
+
+		if (guestMembers && guestMembers.length > 0) {
+			const guestOwnHouseholdIds = guestMembers.map((m) => m.own_household_id);
+			const { data: guestPersonasData } = await locals.supabase
+				.from('personas')
+				.select('*')
+				.in('household_id', guestOwnHouseholdIds)
+				.not('user_id', 'is', null);
+
+			if (guestPersonasData && guestPersonasData.length > 0) {
+				personas = [...personas, ...(guestPersonasData as Persona[])];
+			}
+		}
 	}
 
 	// Нет персоны и не на онбординге → редирект на онбординг

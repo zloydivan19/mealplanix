@@ -242,6 +242,19 @@ export interface Database {
 			};
 		};
 		Views: Record<string, never>;
-		Functions: Record<string, never>;
+		Functions: {
+			approve_household_join: {
+				Args: { p_request_id: string; p_requester_user_id: string; p_household_id: string };
+				Returns: void;
+			};
+			leave_household: {
+				Args: Record<string, never>;
+				Returns: void;
+			};
+			remove_household_member: {
+				Args: { p_target_user_id: string };
+				Returns: void;
+			};
+		};
 	};
 }

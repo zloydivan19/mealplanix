@@ -27,6 +27,7 @@ import { enhance } from '$app/forms';
 
 	// ── Удаление персоны ──────────────────────────────────────
 	let deletingId = $state<number | null>(null);
+	let deleteConfirmId = $state<number | null>(null);
 	let deleteError = $state('');
 
 	// ── Редактирование локальной персоны ──────────────────────
@@ -191,7 +192,7 @@ import { enhance } from '$app/forms';
 		</h1>
 	</div>
 
-	<div class="mx-auto w-full max-w-lg px-4 py-6">
+	<div class="mx-auto w-full max-w-2xl px-4 py-6">
 		<!-- ── РАЗДЕЛ: Персоны домохозяйства ────────────────────── -->
 		<div
 			class="mb-4 flex flex-col gap-0"
@@ -214,7 +215,7 @@ import { enhance } from '$app/forms';
 				{@const isEditing = editingLocalPersonaId === p.id}
 				<div style="border-top: 1px solid var(--color-border);">
 					<!-- Строка персоны -->
-					<div style="padding: 12px 20px; display: flex; align-items: center; gap: 12px;">
+					<div style="padding: 0 20px; height: 56px; display: flex; align-items: center; gap: 12px; overflow: hidden;">
 						<!-- Аватар -->
 						<div
 							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold"
@@ -228,38 +229,14 @@ import { enhance } from '$app/forms';
 						</div>
 
 						<!-- Имя + бейдж -->
-						<div class="flex min-w-0 flex-1 flex-col gap-0.5">
-							<span class="truncate text-sm font-semibold" style="color: var(--color-text-primary);"
-								>{p.name}</span
-							>
-							{#if isLocal}
+						<div class="flex min-w-0 flex-1 items-center gap-2">
+							<span class="truncate text-sm font-semibold" style="color: var(--color-text-primary);">{p.name}</span>
+							{#if isMainPersona}
 								<span
-									class="inline-flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-xs font-semibold"
-									style="background: var(--color-bg-page); color: var(--color-text-muted); border: 1px solid var(--color-border);"
+									class="inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-xs font-semibold"
+									style="background: var(--color-green-tint); color: var(--color-green-primary); border: 1px solid var(--color-green-tint-border);"
 								>
-									<svg
-										width="10"
-										height="10"
-										viewBox="0 0 10 10"
-										fill="none"
-										style="flex-shrink:0;"
-									>
-										<circle
-											cx="5"
-											cy="5"
-											r="4"
-											stroke="currentColor"
-											stroke-width="1.4"
-											fill="none"
-										/>
-										<path
-											d="M5 3v2.5l1.5 1"
-											stroke="currentColor"
-											stroke-width="1.2"
-											stroke-linecap="round"
-										/>
-									</svg>
-									Без аккаунта
+									Основной
 								</span>
 							{/if}
 						</div>
@@ -285,32 +262,57 @@ import { enhance } from '$app/forms';
 
 						<!-- Кнопка удалить (только для локальных своих) -->
 						{#if canManage}
-							<form
-								method="POST"
-								action="?/deletePersona"
-								use:enhance={() => {
-									deletingId = p.id;
-									deleteError = '';
-									return async ({ result, update }) => {
-										deletingId = null;
-										if (result.type === 'failure') {
-											deleteError = (result.data as { error?: string })?.error ?? 'Ошибка удаления';
-										}
-										await update();
-									};
-								}}
-							>
-								<input type="hidden" name="persona_id" value={p.id} />
+							{#if deleteConfirmId === p.id}
+								<!-- Подтверждение удаления -->
+								<div class="flex items-center gap-1.5 shrink-0">
+									<span class="text-xs font-semibold" style="color: var(--color-text-muted); white-space: nowrap;">Удалить?</span>
+									<form
+										method="POST"
+										action="?/deletePersona"
+										use:enhance={() => {
+											deletingId = p.id;
+											deleteConfirmId = null;
+											deleteError = '';
+											return async ({ result, update }) => {
+												deletingId = null;
+												if (result.type === 'failure') {
+													deleteError = (result.data as { error?: string })?.error ?? 'Ошибка удаления';
+												}
+												await update();
+											};
+										}}
+									>
+										<input type="hidden" name="persona_id" value={p.id} />
+										<button
+											type="submit"
+											disabled={deletingId === p.id}
+											class="flex h-8 shrink-0 items-center justify-center rounded-lg px-2.5 text-xs font-semibold"
+											style="background: var(--color-error-bg); border: 1px solid var(--color-error-border); color: var(--color-error); cursor: pointer;"
+										>
+											Да
+										</button>
+									</form>
+									<button
+										type="button"
+										onclick={() => (deleteConfirmId = null)}
+										class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-semibold"
+										style="background: transparent; border: 1px solid var(--color-border); color: var(--color-text-muted); cursor: pointer;"
+										aria-label="Отмена"
+									>
+										<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+									</button>
+								</div>
+							{:else}
+								<!-- Иконка корзины -->
 								<button
-									type="submit"
-									disabled={deletingId === p.id}
+									type="button"
+									onclick={() => (deleteConfirmId = p.id)}
 									class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors"
 									style="background: transparent; border: 1px solid var(--color-border); color: var(--color-text-muted); cursor: pointer;"
 									onmouseenter={(e) => {
 										(e.currentTarget as HTMLElement).style.background = 'var(--color-error-bg)';
 										(e.currentTarget as HTMLElement).style.color = 'var(--color-error)';
-										(e.currentTarget as HTMLElement).style.borderColor =
-											'var(--color-error-border)';
+										(e.currentTarget as HTMLElement).style.borderColor = 'var(--color-error-border)';
 									}}
 									onmouseleave={(e) => {
 										(e.currentTarget as HTMLElement).style.background = 'transparent';
@@ -329,7 +331,7 @@ import { enhance } from '$app/forms';
 										/>
 									</svg>
 								</button>
-							</form>
+							{/if}
 						{/if}
 					</div>
 
@@ -940,31 +942,44 @@ import { enhance } from '$app/forms';
 						}
 					};
 				}}
-				class="flex items-start gap-3"
 			>
 				<input type="hidden" name="carry_dinner_to_lunch" value={carryDinner ? '1' : '0'} />
-				<button
-					type="submit"
-					role="switch"
-					aria-checked={carryDinner}
-					aria-label="Переносить ужин на обед следующего дня"
-					onclick={(e) => { e.preventDefault(); carryDinner = !carryDinner; (e.currentTarget.closest('form') as HTMLFormElement).requestSubmit(); }}
-					class="relative mt-0.5 h-6 w-10 shrink-0 cursor-pointer rounded-full transition-colors"
-					style="background: {carryDinner ? 'var(--color-green-primary)' : 'var(--color-border)'}; border: none; padding: 0;"
+				<div
+					style="border-radius: var(--radius-lg); border: 1px solid {carryDinner ? 'var(--color-green-tint-border)' : 'var(--color-border)'}; overflow: hidden; transition: border-color var(--transition-fast);"
 				>
-					<span
-						class="absolute top-1 block h-4 w-4 rounded-full shadow transition-transform"
-						style="background: var(--color-text-inverse); transform: translateX({carryDinner ? '20px' : '4px'});"
-					></span>
-				</button>
-				<div>
-					<p class="text-sm font-semibold" style="color: var(--color-text-primary);">
-						Переносить ужин на обед следующего дня
-					</p>
-					<p class="mt-0.5 text-xs" style="color: var(--color-text-muted); line-height: 1.5;">
-						Готовишь несколько порций сразу — одна идёт на ужин, другая на завтра в обед. При
-						генерации меню обед каждого дня будет совпадать с ужином предыдущего.
-					</p>
+					<button
+						type="submit"
+						role="switch"
+						aria-checked={carryDinner}
+						aria-label="Переносить ужин на обед следующего дня"
+						onclick={(e) => { e.preventDefault(); carryDinner = !carryDinner; (e.currentTarget.closest('form') as HTMLFormElement).requestSubmit(); }}
+						class="flex w-full items-start gap-3 px-4 py-3"
+						style="background: {carryDinner ? 'var(--color-green-tint)' : 'var(--color-bg-page)'}; border: none; cursor: pointer; text-align: left; transition: background var(--transition-fast);"
+					>
+						<div
+							class="relative mt-0.5 h-6 w-10 shrink-0 rounded-full"
+							style="background: {carryDinner ? 'var(--color-green-primary)' : 'var(--color-border)'}; transition: background var(--transition-fast);"
+						>
+							<span
+								class="absolute top-1 block h-4 w-4 rounded-full shadow"
+								style="background: var(--color-text-inverse); transform: translateX({carryDinner ? '20px' : '4px'}); transition: transform var(--transition-fast);"
+							></span>
+						</div>
+						<div>
+							<p
+								class="text-sm font-semibold"
+								style="color: {carryDinner ? 'var(--color-green-primary)' : 'var(--color-text-primary)'};"
+							>
+								Переносить ужин на обед следующего дня
+							</p>
+						</div>
+					</button>
+					<div class="px-4 pt-1 pb-3">
+						<p class="text-xs" style="color: var(--color-text-muted); line-height: 1.5;">
+							Готовишь несколько порций сразу — одна идёт на ужин, другая на завтра в обед. При
+							генерации меню обед каждого дня будет совпадать с ужином предыдущего.
+						</p>
+					</div>
 				</div>
 			</form>
 		</div>
@@ -1078,15 +1093,55 @@ import { enhance } from '$app/forms';
 				</div>
 			</form>
 		</div>
-	</div>
 
-	<!-- ── Моя семья ──────────────────────────────────────────── -->
-	<div class="mx-auto w-full max-w-2xl px-4 pb-8">
+		<!-- ── РАЗДЕЛ: Вступить по коду (только для владельцев своей семьи) ── -->
+		{#if isOwner}
+			<div
+				class="mb-4"
+				style="background: var(--color-bg-card); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); border: 1px solid var(--color-border); padding: 20px;"
+			>
+				<h2 class="mb-1 font-semibold" style="font-size: 16px; color: var(--color-text-primary);">
+					Присоединиться к семье
+				</h2>
+				<p class="mb-4 text-sm" style="color: var(--color-text-muted);">
+					Получил код от владельца — введи его здесь
+				</p>
+				<div class="flex gap-2">
+					<input
+						id="join-code-input"
+						type="text"
+						placeholder="Например: A1B2C3D4"
+						class="brand-input flex-1"
+						style="text-transform: uppercase; letter-spacing: 0.1em; font-family: monospace;"
+						oninput={(e) => { (e.target as HTMLInputElement).value = (e.target as HTMLInputElement).value.toUpperCase(); }}
+						onkeydown={(e) => {
+							if (e.key === 'Enter') {
+								const val = (e.target as HTMLInputElement).value.trim();
+								if (val) window.location.href = `/join?code=${encodeURIComponent(val)}`;
+							}
+						}}
+					/>
+					<button
+						type="button"
+						onclick={() => {
+							const input = document.getElementById('join-code-input') as HTMLInputElement;
+							const val = input?.value.trim();
+							if (val) window.location.href = `/join?code=${encodeURIComponent(val)}`;
+						}}
+						class="btn-primary"
+						style="width: auto; padding: 0 20px;"
+					>
+						Найти
+					</button>
+				</div>
+			</div>
+		{/if}
+
+		<!-- ── РАЗДЕЛ: Моя семья ────────────────────────────────── -->
 		<div
-			class="rounded-xl p-6"
-			style="background: var(--color-bg-card); border: 1px solid var(--color-border);"
+			style="background: var(--color-bg-card); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); border: 1px solid var(--color-border); padding: 20px;"
 		>
-			<h2 class="mb-4 font-semibold" style="font-size: 16px; color: var(--color-text-primary);">
+			<h2 class="mb-1 font-semibold" style="font-size: 16px; color: var(--color-text-primary);">
 				Моя семья
 			</h2>
 
@@ -1102,8 +1157,8 @@ import { enhance } from '$app/forms';
 			{#if isOwner}
 				<!-- Владелец: список участников -->
 				<div class="mb-5">
-					<p class="mb-2 text-xs font-semibold" style="color: var(--color-text-muted);">
-						УЧАСТНИКИ
+					<p class="mb-2 text-xs font-semibold" style="color: var(--color-text-muted); letter-spacing: 0.07em; text-transform: uppercase;">
+						Участники
 					</p>
 					<div class="flex flex-col gap-2">
 						{#each members as member (member.id)}
@@ -1139,7 +1194,7 @@ import { enhance } from '$app/forms';
 										<button
 											type="submit"
 											class="text-xs font-semibold"
-											style="color: var(--color-error); background: none; border: none; cursor: pointer; padding: 4px 8px;"
+											style="color: var(--color-error); background: none; border: 1px solid var(--color-error-border); border-radius: var(--radius-md); cursor: pointer; padding: 4px 10px;"
 										>
 											Удалить
 										</button>
@@ -1152,8 +1207,8 @@ import { enhance } from '$app/forms';
 
 				<!-- Инвайт-код -->
 				<div class="mb-5">
-					<p class="mb-2 text-xs font-semibold" style="color: var(--color-text-muted);">
-						КОД ПРИГЛАШЕНИЯ
+					<p class="mb-2 text-xs font-semibold" style="color: var(--color-text-muted); letter-spacing: 0.07em; text-transform: uppercase;">
+						Код приглашения
 					</p>
 					<div
 						class="mb-3 flex items-center gap-3 rounded-lg px-4 py-3"
@@ -1173,7 +1228,7 @@ import { enhance } from '$app/forms';
 							class="btn-secondary text-sm"
 							style="width: auto; padding: 8px 16px;"
 						>
-							{copyCodeSuccess ? '✓ Скопировано' : 'Скопировать код'}
+							{#if copyCodeSuccess}<svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="display:inline;vertical-align:-1px;margin-right:4px;"><path d="M2 6.5l3 3 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Скопировано{:else}Скопировать код{/if}
 						</button>
 						<button
 							type="button"
@@ -1181,7 +1236,7 @@ import { enhance } from '$app/forms';
 							class="btn-secondary text-sm"
 							style="width: auto; padding: 8px 16px;"
 						>
-							{copyLinkSuccess ? '✓ Скопировано' : 'Поделиться ссылкой'}
+							{#if copyLinkSuccess}<svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="display:inline;vertical-align:-1px;margin-right:4px;"><path d="M2 6.5l3 3 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Скопировано{:else}Поделиться ссылкой{/if}
 						</button>
 						<form
 							method="POST"
@@ -1207,7 +1262,7 @@ import { enhance } from '$app/forms';
 						>
 							<button
 								type="submit"
-								class="btn-secondary text-sm"
+								class="btn-ghost text-sm"
 								style="width: auto; padding: 8px 16px;"
 							>
 								Обновить код
@@ -1220,10 +1275,10 @@ import { enhance } from '$app/forms';
 				{#if pendingRequests.length > 0}
 					<div>
 						<p class="mb-2 text-xs font-semibold" style="color: var(--color-text-muted);">
-							ЗАЯВКИ НА ВСТУПЛЕНИЕ
+							<span style="letter-spacing: 0.07em; text-transform: uppercase;">Заявки на вступление</span>
 							<span
 								class="ml-1 inline-flex items-center justify-center rounded-full px-1.5 py-0.5 text-xs font-bold"
-								style="background: var(--color-accent); color: var(--color-bg-card); min-width: 18px;"
+								style="background: var(--color-green-primary); color: var(--color-bg-card); min-width: 18px;"
 							>
 								{pendingRequests.length}
 							</span>

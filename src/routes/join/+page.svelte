@@ -3,6 +3,13 @@
 	import { enhance } from '$app/forms';
 
 	let { data, form } = $props<{ data: PageData; form: ActionData }>();
+
+	let manualCode = $state('');
+
+	function goToCode() {
+		const c = manualCode.trim();
+		if (c) window.location.href = `/join?code=${encodeURIComponent(c)}`;
+	}
 </script>
 
 <svelte:head><title>Вступить в семью — MealPlaniX</title></svelte:head>
@@ -33,10 +40,31 @@
 			{/if}
 
 			{#if data.invalidCode}
-				<p class="mt-4 text-sm" style="color: var(--color-error);">
-					Код недействителен или истёк. Попросите владельца выдать новый код.
+				<p class="mt-3 mb-4 text-sm" style="color: var(--color-error);">
+					Код недействителен или устарел. Введи актуальный код ниже или попроси владельца поделиться ссылкой заново.
 				</p>
-				<a href="/" class="mt-4 block text-center text-sm" style="color: var(--color-accent);">
+				<!-- Ввод кода вручную -->
+				<div class="flex gap-2">
+					<input
+						type="text"
+						bind:value={manualCode}
+						placeholder="Например: A1B2C3D4"
+						class="brand-input flex-1"
+						style="text-transform: uppercase; letter-spacing: 0.1em; font-family: monospace;"
+						oninput={(e) => { manualCode = (e.target as HTMLInputElement).value.toUpperCase(); }}
+						onkeydown={(e) => { if (e.key === 'Enter') goToCode(); }}
+					/>
+					<button
+						type="button"
+						onclick={goToCode}
+						disabled={!manualCode.trim()}
+						class="btn-primary"
+						style="width: auto; padding: 0 16px; opacity: {manualCode.trim() ? '1' : '0.45'};"
+					>
+						Найти
+					</button>
+				</div>
+				<a href="/" class="mt-4 block text-center text-sm" style="color: var(--color-text-muted);">
 					На главную
 				</a>
 			{:else if data.alreadyMember}

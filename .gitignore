@@ -27,3 +27,9 @@ vite.config.ts.timestamp-*
 
 # Git worktrees
 .worktrees/
+
+# Dataset (large files, not for repo)
+dataset/
+
+# Superpowers brainstorming sessions
+.superpowers/

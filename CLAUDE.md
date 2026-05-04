@@ -5,10 +5,10 @@
 ## Supabase
 
 ```
-Project ID: hiylwwienisxynrefljz
-URL:        https://hiylwwienisxynrefljz.supabase.co
-Dashboard:  https://supabase.com/dashboard/project/hiylwwienisxynrefljz
-Production: https://menu-plan.netlify.app
+Project ID: owhgigxcbclbrvildmhh
+URL:        https://owhgigxcbclbrvildmhh.supabase.co
+Dashboard:  https://supabase.com/dashboard/project/owhgigxcbclbrvildmhh
+Production: https://mealplanix.netlify.app
 ```
 
 **Критическая логика `household_members`:**

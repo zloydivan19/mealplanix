@@ -110,10 +110,10 @@ import type { Dish, DishCategory, ShoppingCategory } from '$lib/types/dish.js';
 
 export type { Dish, DishCategory, ShoppingCategory };
 
-// Данные кастомного блюда в JSONB-колонке (без id, photo, portion_min/max — они дефолтные)
+// Данные кастомного блюда в JSONB-колонке (без id, portion_min/max — они дефолтные)
 export type CustomDishData = Omit<
 	Dish,
-	'id' | 'photo' | 'portion_min_g' | 'portion_max_g' | '_custom'
+	'id' | 'portion_min_g' | 'portion_max_g' | '_custom'
 >;
 
 export interface CustomDish {
@@ -169,6 +169,30 @@ export interface CartState {
 	qty: number | null;
 	unit: string | null;
 	category: string | null;
+}
+
+export interface TemplateSlot {
+	day_index: number;
+	meal_key: string;
+	dish_name: string;
+	dish_photo: string | null;
+	dish_category: string | null;
+	kcal: number;
+	protein: number;
+	fat: number;
+	carbs: number;
+	cost: number | null;
+	grams: number;
+	sort_order: number;
+}
+
+export interface MenuTemplate {
+	id: number;
+	household_id: string;
+	created_by: string;
+	name: string;
+	slots: TemplateSlot[];
+	created_at: string;
 }
 
 // ── Тип Database для Supabase клиента ────────────────────────
@@ -238,6 +262,12 @@ export interface Database {
 				Row: AsRecord<CartState>;
 				Insert: AsRecord<Omit<CartState, 'id' | 'updated_at'>>;
 				Update: AsRecord<Partial<Omit<CartState, 'id' | 'household_id'>>>;
+				Relationships: [];
+			};
+			menu_templates: {
+				Row: AsRecord<MenuTemplate>;
+				Insert: AsRecord<Omit<MenuTemplate, 'id' | 'created_at'>>;
+				Update: AsRecord<Partial<Omit<MenuTemplate, 'id' | 'household_id' | 'created_by' | 'created_at'>>>;
 				Relationships: [];
 			};
 		};

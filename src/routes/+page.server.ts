@@ -34,5 +34,13 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     return { menuPlans: [] as MenuPlanRow[] };
   }
 
-  return { menuPlans: (data ?? []) as MenuPlanRow[] };
+  const { data: menuTemplates } = await locals.supabase
+    .from('menu_templates')
+    .select('id, household_id, created_by, name, slots, created_at')
+    .order('created_at', { ascending: false });
+
+  return {
+    menuPlans: (data ?? []) as MenuPlanRow[],
+    menuTemplates: (menuTemplates ?? []) as import('$lib/types/database.js').MenuTemplate[],
+  };
 };

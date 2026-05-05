@@ -45,7 +45,7 @@ export function customToDish(cd: CustomDish, idx: number): Dish {
     portion_max_g:     1000,
     portion_default_g: d.portion_default_g,
     cost_per_100g:     d.cost_per_100g,
-    photo:             undefined,
+    photo:             d.photo ?? undefined,
     ingredients:       d.ingredients,
     _custom:           true,
   };
@@ -93,10 +93,16 @@ export function buildFridgeHints(
   return hints;
 }
 
+const CATEGORY_MAX_G: Partial<Record<string, number>> = {
+  salad: 300,
+  snack: 400,
+};
+
 /** Масштабирует блюдо до целевых ккал, зажимая порцию в реалистичном диапазоне */
 export function scaleDish(dish: Dish, target_kcal: number): Omit<GeneratedSlot, 'day_index' | 'meal_key'> {
-  const rawGrams = Math.round(target_kcal / dish.kcal_per_100g * 100);
-  const grams    = Math.min(Math.max(rawGrams, dish.portion_min_g), dish.portion_max_g);
+  const rawGrams   = Math.round(target_kcal / dish.kcal_per_100g * 100);
+  const effectiveMax = Math.min(dish.portion_max_g, CATEGORY_MAX_G[dish.category] ?? dish.portion_max_g);
+  const grams      = Math.min(Math.max(rawGrams, dish.portion_min_g), effectiveMax);
   const k        = grams / 100;
 
   return {
@@ -271,8 +277,8 @@ export function generateWeekPlan(opts: GenerateOptions): GeneratedSlot[] {
 
     // ── Ужин ─────────────────────────────────────────────────────────────
     buildMealSlots(day, 'dn', kcal_dn, [
-      { category: 'main',  ratio: 0.55 },
-      { category: 'salad', ratio: 0.45 },
+      { category: 'main',  ratio: 0.80 },
+      { category: 'salad', ratio: 0.20 },
     ], {
       main:  prevDayIds(slots, day, 'main'),
       salad: prevDayIds(slots, day, 'salad'),

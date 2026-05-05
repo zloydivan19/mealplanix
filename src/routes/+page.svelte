@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
 	import { page } from '$app/state';
 	import {
 		getWeekDays,
@@ -23,6 +23,9 @@
 	import type { Dish } from '$lib/types/dish.js';
 	import { generateWeekPlan, buildFridgeHints, customToDish } from '$lib/utils/generate.js';
 	import type { FridgeRow } from '$lib/types/database.js';
+	import SaveTemplateModal from '$lib/components/SaveTemplateModal.svelte';
+	import ApplyTemplateModal from '$lib/components/ApplyTemplateModal.svelte';
+	import type { MenuTemplate, TemplateSlot } from '$lib/types/database.js';
 	import type { FridgeHint } from '$lib/utils/generate.js';
 	import { tick } from 'svelte';
 	import { browser } from '$app/environment';
@@ -148,6 +151,14 @@
 	let smartReplacePlan = $state<MenuPlanRow | null>(null);
 	let fridgeModalOpen = $state(false);
 	let splitDropOpen   = $state(false);
+	let saveTemplateOpen  = $state(false);
+	let applyTemplateOpen = $state(false);
+	let localTemplates = $state<MenuTemplate[]>(
+		(data.menuTemplates ?? []) as MenuTemplate[]
+	);
+	$effect(() => {
+		localTemplates = (data.menuTemplates ?? []) as MenuTemplate[];
+	});
 
 	const fridgeItems = $derived((page.data.fridgeItems ?? []) as FridgeRow[]);
 	const hasFridge   = $derived(fridgeItems.length > 0);
@@ -849,6 +860,161 @@
 		runGenerate(hints);
 	}
 
+	async function handleSaveTemplate(name: string) {
+		if (!activePersona) return;
+		const slots: TemplateSlot[] = [];
+		for (const [key, rows] of localPlans) {
+			if (!key.startsWith(`${activePersona.id}__${weekId}__`)) continue;
+			for (const r of rows) {
+				slots.push({
+					day_index:     r.day_index,
+					meal_key:      r.meal_key,
+					dish_name:     r.dish_name,
+					dish_photo:    r.dish_photo,
+					dish_category: r.dish_category,
+					kcal:          r.kcal,
+					protein:       r.protein,
+					fat:           r.fat,
+					carbs:         r.carbs,
+					cost:          r.cost,
+					grams:         r.grams,
+					sort_order:    r.sort_order,
+				});
+			}
+		}
+		const householdId = page.data.householdId as string | null;
+		const userId = page.data.user?.id;
+		if (!householdId || !userId) return;
+
+		const { data: inserted, error } = await page.data.supabase
+			.from('menu_templates')
+			.insert({ household_id: householdId, created_by: userId, name, slots })
+			.select()
+			.single();
+
+		saveTemplateOpen = false;
+		if (error || !inserted) {
+			showErrorToast('Не удалось сохранить шаблон');
+			return;
+		}
+		localTemplates = [inserted as MenuTemplate, ...localTemplates];
+		showToast(`Шаблон «${name}» сохранён`, []);
+	}
+
+	async function handleApplyTemplate(
+		template: MenuTemplate,
+		mode: 'replace' | 'fill'
+	) {
+		if (!activePersona) return;
+		applyTemplateOpen = false;
+
+		const slots = template.slots;
+		const persona = activePersona;
+		const snapshot = new Map(localPlans);
+
+		const rowsToInsert =
+			mode === 'fill'
+				? slots.filter((s) => {
+						const k = slotKey(persona.id, weekId, s.day_index, s.meal_key as MealKey);
+						return (localPlans.get(k) ?? []).length === 0;
+					})
+				: slots;
+
+		if (rowsToInsert.length === 0) {
+			showToast('Все слоты уже заполнены', []);
+			return;
+		}
+
+		if (mode === 'replace') {
+			await page.data.supabase
+				.from('menu_plans')
+				.delete()
+				.eq('persona_id', persona.id)
+				.eq('week_label', weekId);
+		}
+
+		const inserts = rowsToInsert.map((s) => ({
+			persona_id:    persona.id,
+			week_label:    weekId,
+			day_index:     s.day_index,
+			meal_key:      s.meal_key,
+			dish_name:     s.dish_name,
+			dish_photo:    s.dish_photo,
+			dish_category: s.dish_category,
+			kcal:          s.kcal,
+			protein:       s.protein,
+			fat:           s.fat,
+			carbs:         s.carbs,
+			cost:          s.cost,
+			grams:         s.grams,
+			sort_order:    s.sort_order,
+		}));
+
+		const { data: inserted } = await page.data.supabase
+			.from('menu_plans')
+			.insert(inserts)
+			.select('id, day_index, meal_key, dish_name, sort_order');
+
+		if (!inserted || inserted.length === 0) {
+			localPlans = snapshot;
+			showErrorToast('Ошибка при применении шаблона');
+			return;
+		}
+
+		const next = new Map(localPlans);
+		if (mode === 'replace') {
+			for (const [k] of next) {
+				if (k.startsWith(`${persona.id}__${weekId}__`)) next.delete(k);
+			}
+		}
+
+		const usedIndices = new Map<string, number>();
+		for (const row of inserted) {
+			const groupKey = `${row.day_index}__${row.meal_key}__${row.dish_name}`;
+			const usedCount = usedIndices.get(groupKey) ?? 0;
+			const candidates = rowsToInsert.filter(
+				(s) =>
+					s.day_index === row.day_index &&
+					s.meal_key === row.meal_key &&
+					s.dish_name === row.dish_name
+			);
+			const src = candidates[usedCount];
+			usedIndices.set(groupKey, usedCount + 1);
+			if (!src) continue;
+			const k = slotKey(persona.id, weekId, row.day_index, row.meal_key as MealKey);
+			const arr = next.get(k) ?? [];
+			arr.push({
+				id:            row.id,
+				persona_id:    persona.id,
+				week_label:    weekId,
+				day_index:     src.day_index,
+				meal_key:      src.meal_key,
+				dish_name:     src.dish_name,
+				dish_photo:    src.dish_photo,
+				dish_category: src.dish_category,
+				kcal:          src.kcal,
+				protein:       src.protein,
+				fat:           src.fat,
+				carbs:         src.carbs,
+				cost:          src.cost,
+				grams:         src.grams,
+				sort_order:    src.sort_order,
+			});
+			next.set(k, arr);
+		}
+		localPlans = next;
+		const modeLabel = mode === 'fill' ? 'дополнено' : 'применено';
+		showToast(
+			`Шаблон «${template.name}» ${modeLabel}`,
+			inserted.map((r: { id: number }) => r.id)
+		);
+	}
+
+	async function handleDeleteTemplate(templateId: number) {
+		localTemplates = localTemplates.filter((t) => t.id !== templateId);
+		await page.data.supabase.from('menu_templates').delete().eq('id', templateId);
+	}
+
 	async function runGenerate(fridgeHints?: FridgeHint[]) {
 		// Закрываем диалог и ждём обновления DOM до любых тяжёлых операций
 		showGenConfirm = false;
@@ -1502,6 +1668,27 @@
 							onmouseleave={(e) => (e.currentTarget as HTMLElement).style.background = 'transparent'}
 						>
 							🧊 С учётом холодильника…
+						</button>
+						<div style="height: 1px; background: var(--color-border); margin: 4px 0;"></div>
+						<button
+							onclick={() => { splitDropOpen = false; saveTemplateOpen = true; }}
+							disabled={!hasPlansThisWeek()}
+							class="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-left transition-colors"
+							style="color: {hasPlansThisWeek() ? 'var(--color-text-primary)' : 'var(--color-text-muted)'}; opacity: {hasPlansThisWeek() ? '1' : '0.5'};"
+							onmouseenter={(e) => { if (hasPlansThisWeek()) (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-surface)'; }}
+							onmouseleave={(e) => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+						>
+							📋 Сохранить как шаблон
+						</button>
+						<button
+							onclick={() => { splitDropOpen = false; applyTemplateOpen = true; }}
+							disabled={localTemplates.length === 0}
+							class="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-left transition-colors"
+							style="color: {localTemplates.length > 0 ? 'var(--color-text-primary)' : 'var(--color-text-muted)'}; opacity: {localTemplates.length > 0 ? '1' : '0.5'};"
+							onmouseenter={(e) => { if (localTemplates.length > 0) (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-surface)'; }}
+							onmouseleave={(e) => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+						>
+							✨ Применить шаблон…
 						</button>
 					</div>
 				{/if}
@@ -2234,6 +2421,23 @@
 		fridgeItems={fridgeItems}
 		ongenerate={handleFridgeGenerate}
 		onclose={() => (fridgeModalOpen = false)}
+	/>
+{/if}
+
+{#if saveTemplateOpen && activePersona}
+	<SaveTemplateModal
+		onsave={handleSaveTemplate}
+		onclose={() => (saveTemplateOpen = false)}
+	/>
+{/if}
+
+{#if applyTemplateOpen}
+	<ApplyTemplateModal
+		templates={localTemplates}
+		userId={page.data.user?.id ?? ''}
+		onapply={handleApplyTemplate}
+		ondelete={handleDeleteTemplate}
+		onclose={() => (applyTemplateOpen = false)}
 	/>
 {/if}
 

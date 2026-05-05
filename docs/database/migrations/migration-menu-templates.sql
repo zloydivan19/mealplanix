@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS public.menu_templates (
   id           bigserial    PRIMARY KEY,
-  household_id text         NOT NULL,
+  household_id uuid         NOT NULL,
   created_by   uuid         NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name         text         NOT NULL,
   slots        jsonb        NOT NULL DEFAULT '[]',

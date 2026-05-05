@@ -171,6 +171,30 @@ export interface CartState {
 	category: string | null;
 }
 
+export interface TemplateSlot {
+	day_index: number;
+	meal_key: string;
+	dish_name: string;
+	dish_photo: string | null;
+	dish_category: string | null;
+	kcal: number;
+	protein: number;
+	fat: number;
+	carbs: number;
+	cost: number | null;
+	grams: number;
+	sort_order: number;
+}
+
+export interface MenuTemplate {
+	id: number;
+	household_id: string;
+	created_by: string;
+	name: string;
+	slots: TemplateSlot[];
+	created_at: string;
+}
+
 // ── Тип Database для Supabase клиента ────────────────────────
 
 // Вспомогательный тип: делает интерфейс совместимым с Record<string, unknown>
@@ -238,6 +262,12 @@ export interface Database {
 				Row: AsRecord<CartState>;
 				Insert: AsRecord<Omit<CartState, 'id' | 'updated_at'>>;
 				Update: AsRecord<Partial<Omit<CartState, 'id' | 'household_id'>>>;
+				Relationships: [];
+			};
+			menu_templates: {
+				Row: AsRecord<MenuTemplate>;
+				Insert: AsRecord<Omit<MenuTemplate, 'id' | 'created_at'>>;
+				Update: AsRecord<Partial<Omit<MenuTemplate, 'id' | 'household_id' | 'created_by' | 'created_at'>>>;
 				Relationships: [];
 			};
 		};

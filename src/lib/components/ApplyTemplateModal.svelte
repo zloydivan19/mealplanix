@@ -14,9 +14,10 @@
 
   let { templates, userId, onapply, ondelete, onclose }: Props = $props();
 
-  let selectedId = $state<number | null>(templates[0]?.id ?? null);
-  let mergeMode  = $state<MergeMode>('replace');
-  let applying   = $state(false);
+  let selectedId    = $state<number | null>(templates[0]?.id ?? null);
+  let mergeMode     = $state<MergeMode>('replace');
+  let applying      = $state(false);
+  let confirmDelete = $state<number | null>(null);
 
   const selectedTemplate = $derived(templates.find((t) => t.id === selectedId) ?? null);
   const canApply = $derived(selectedTemplate !== null && !applying);
@@ -87,20 +88,39 @@
               </p>
             </div>
             {#if t.created_by === userId}
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <button
-                type="button"
-                onclick={(e) => { e.stopPropagation(); ondelete(t.id); }}
-                class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors"
-                style="color: var(--color-text-muted);"
-                aria-label="Удалить шаблон"
-                onmouseenter={(e) => (e.currentTarget as HTMLElement).style.color = 'var(--color-error)'}
-                onmouseleave={(e) => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-muted)'}
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M2 3.5h10M5.5 3.5V2.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v1M6 6v4M8 6v4M3 3.5l.7 7a.5.5 0 0 0 .5.5h5.6a.5.5 0 0 0 .5-.5l.7-7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
+              {#if confirmDelete === t.id}
+                <div class="flex shrink-0 items-center gap-1">
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <button
+                    type="button"
+                    onclick={(e) => { e.stopPropagation(); confirmDelete = null; }}
+                    class="rounded-md px-2 py-1 text-xs font-semibold"
+                    style="border: 1px solid var(--color-border); background: transparent; color: var(--color-text-muted);"
+                  >Нет</button>
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <button
+                    type="button"
+                    onclick={(e) => { e.stopPropagation(); confirmDelete = null; ondelete(t.id); }}
+                    class="rounded-md px-2 py-1 text-xs font-semibold"
+                    style="background: var(--color-error); color: #fff;"
+                  >Удалить</button>
+                </div>
+              {:else}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <button
+                  type="button"
+                  onclick={(e) => { e.stopPropagation(); confirmDelete = t.id; }}
+                  class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors"
+                  style="color: var(--color-text-muted);"
+                  aria-label="Удалить шаблон"
+                  onmouseenter={(e) => (e.currentTarget as HTMLElement).style.color = 'var(--color-error)'}
+                  onmouseleave={(e) => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-muted)'}
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M2 3.5h10M5.5 3.5V2.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v1M6 6v4M8 6v4M3 3.5l.7 7a.5.5 0 0 0 .5.5h5.6a.5.5 0 0 0 .5-.5l.7-7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+              {/if}
             {/if}
           </div>
         {/each}

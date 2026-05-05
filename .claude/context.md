@@ -36,10 +36,12 @@ SvelteKit 2 + Svelte 5 Runes · Tailwind CSS v4 + CSS vars (`src/routes/layout.c
 | `household_members` | `user_id`, `household_id`, `own_household_id` |
 | `personas` | `household_id`, KBJU targets, `meal_ratios` (JSONB) |
 | `menu_plans` | `persona_id`, `week_label`, `day_index`, `meal_key`, `dish_name`, KBJU cols |
+| `menu_templates` | `household_id`, `created_by`, `name`, `slots` (JSONB array of TemplateSlot) |
 | `custom_dishes` | `household_id`, `data` (JSONB) |
 | `custom_products` | `household_id`, `data` (JSONB) |
 | `household_fridge` | `id` (GENERATED ALWAYS AS IDENTITY), `household_id`, `product_name`, `qty`, `unit`, `expires_at` |
 | `household_join_requests` | `household_id`, `requester_user_id`, `status` |
+| `food_catalog` | `id`, `name`, `category`, KBJU cols, `ingredients` (JSONB), `photo` (text) |
 
 ## Svelte Rules
 - Runes only: `$state`, `$derived`, `$effect`, `$props`

@@ -110,10 +110,10 @@ import type { Dish, DishCategory, ShoppingCategory } from '$lib/types/dish.js';
 
 export type { Dish, DishCategory, ShoppingCategory };
 
-// Данные кастомного блюда в JSONB-колонке (без id, photo, portion_min/max — они дефолтные)
+// Данные кастомного блюда в JSONB-колонке (без id, portion_min/max — они дефолтные)
 export type CustomDishData = Omit<
 	Dish,
-	'id' | 'photo' | 'portion_min_g' | 'portion_max_g' | '_custom'
+	'id' | 'portion_min_g' | 'portion_max_g' | '_custom'
 >;
 
 export interface CustomDish {

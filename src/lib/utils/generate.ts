@@ -45,7 +45,7 @@ export function customToDish(cd: CustomDish, idx: number): Dish {
     portion_max_g:     1000,
     portion_default_g: d.portion_default_g,
     cost_per_100g:     d.cost_per_100g,
-    photo:             undefined,
+    photo:             d.photo ?? undefined,
     ingredients:       d.ingredients,
     _custom:           true,
   };

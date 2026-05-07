@@ -32,6 +32,7 @@
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') onclose();
   }
+
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -101,22 +102,36 @@
 
       <!-- КБЖУ -->
       <div class="px-5 py-4" style="border-bottom: 1px solid var(--color-border);">
+        <!-- Подпись: на порцию -->
+        <p class="mb-2" style="font-size: 11px; color: var(--color-text-muted);">на {grams} г</p>
         <div class="grid grid-cols-4 gap-2 text-center">
           <div style="background: var(--color-green-tint); border-radius: var(--radius-md); padding: 10px 4px;">
             <p class="font-bold" style="font-size: 18px; color: var(--color-green-primary);">{kcal}</p>
             <p style="font-size: 11px; color: var(--color-text-muted);">ккал</p>
+            {#if dish}
+              <p style="font-size: 10px; color: var(--color-text-muted); opacity: 0.6; margin-top: 2px;">{dish.kcal_per_100g}/100г</p>
+            {/if}
           </div>
           <div style="background: var(--color-bg-page); border-radius: var(--radius-md); padding: 10px 4px;">
             <p class="font-bold" style="font-size: 18px; color: var(--color-macro-protein);">{protein}</p>
             <p style="font-size: 11px; color: var(--color-text-muted);">белки г</p>
+            {#if dish}
+              <p style="font-size: 10px; color: var(--color-text-muted); opacity: 0.6; margin-top: 2px;">{dish.protein_per_100g}/100г</p>
+            {/if}
           </div>
           <div style="background: var(--color-bg-page); border-radius: var(--radius-md); padding: 10px 4px;">
             <p class="font-bold" style="font-size: 18px; color: var(--color-macro-fat);">{fat}</p>
             <p style="font-size: 11px; color: var(--color-text-muted);">жиры г</p>
+            {#if dish}
+              <p style="font-size: 10px; color: var(--color-text-muted); opacity: 0.6; margin-top: 2px;">{dish.fat_per_100g}/100г</p>
+            {/if}
           </div>
           <div style="background: var(--color-bg-page); border-radius: var(--radius-md); padding: 10px 4px;">
             <p class="font-bold" style="font-size: 18px; color: var(--color-macro-carbs);">{carbs}</p>
             <p style="font-size: 11px; color: var(--color-text-muted);">углев. г</p>
+            {#if dish}
+              <p style="font-size: 10px; color: var(--color-text-muted); opacity: 0.6; margin-top: 2px;">{dish.carbs_per_100g}/100г</p>
+            {/if}
           </div>
         </div>
       </div>
@@ -124,12 +139,22 @@
       <!-- Ингредиенты -->
       {#if dish?.ingredients?.length}
         <div class="px-5 py-4">
-          <p class="font-semibold mb-3" style="font-size: 14px; color: var(--color-text-primary);">Ингредиенты</p>
+          <div class="flex items-baseline gap-2 mb-3">
+            <p class="font-semibold" style="font-size: 14px; color: var(--color-text-primary);">Ингредиенты</p>
+            {#if dish.portion_default_g}
+              <p style="font-size: 12px; color: var(--color-text-muted);">на {dish.portion_default_g} г</p>
+            {/if}
+          </div>
           <ul class="flex flex-col gap-1.5">
             {#each dish.ingredients as item}
-              <li class="flex items-center gap-2" style="font-size: 14px; color: var(--color-text-muted);">
-                <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--color-green-soft); flex-shrink: 0; display: inline-block;"></span>
-                {typeof item === 'string' ? item : item.name}
+              <li class="flex items-start gap-2" style="font-size: 14px; color: var(--color-text-muted);">
+                <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--color-green-soft); flex-shrink: 0; display: inline-block; margin-top: 5px;"></span>
+                <span>
+                  {typeof item === 'string' ? item : item.name}
+                  {#if typeof item !== 'string' && item.qty != null && item.unit}
+                    <span style="color: var(--color-text-faint, var(--color-text-muted)); opacity: 0.7;">— {item.qty} {item.unit}</span>
+                  {/if}
+                </span>
               </li>
             {/each}
           </ul>

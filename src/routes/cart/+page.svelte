@@ -5,8 +5,9 @@
 	import { aggregateIngredients, type CartItem } from '$lib/utils/ingredients.js';
 	import { SHOPPING_CATEGORY_LABELS, SHOPPING_CATEGORY_ORDER } from '$lib/types/dish.js';
 	import type { ShoppingCategory } from '$lib/types/dish.js';
-	import type { Dish, CustomDish, FridgeRow, CartState } from '$lib/types/database.js';
+	import type { Dish, CustomDish, FridgeRow, CartState, Household } from '$lib/types/database.js';
 	import type { PageData } from './$types.js';
+	import ShoppingModeView from '$lib/components/ShoppingModeView.svelte';
 
 	// Subset selected from cart_state
 	type CartStateRow = Pick<
@@ -336,6 +337,51 @@
 			fridgeToast = false;
 		}, 3500);
 	}
+
+	// ── Shopping Mode (V5-100) ────────────────────────────────────────
+	let shoppingMode = $state(false);
+	let completingShopping = $state(false);
+	let household = $derived((page.data.household ?? null) as Household | null);
+
+	function formatShoppedDate(iso: string): string {
+		const d = new Date(iso);
+		const months = ['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+		return `${d.getDate()} ${months[d.getMonth()]}`;
+	}
+
+	async function completeShopping() {
+		if (!householdId || completingShopping) return;
+		completingShopping = true;
+
+		// Считаем сумму и количество ДО переноса (после transferToFridge ничего не изменится в checked, но безопаснее)
+		const boughtNames = allItemsWithManual.filter((n) => checked.has(n));
+		const totalSum = Math.round(boughtNames.reduce((s, n) => s + (prices[n] ?? 0), 0));
+		const itemsCount = boughtNames.length;
+
+		// 1. Переносим в холодильник (существующая логика)
+		await transferToFridge();
+
+		// 2. Сохраняем метку последней закупки
+		const nowIso = new Date().toISOString();
+		await page.data.supabase
+			.from('households')
+			.update({
+				last_shopped_at: nowIso,
+				last_shopped_total_rub: totalSum,
+				last_shopped_items: itemsCount
+			})
+			.eq('id', householdId);
+
+		// Локально обновляем чтобы баннер сразу появился
+		if (household) {
+			household.last_shopped_at = nowIso;
+			household.last_shopped_total_rub = totalSum;
+			household.last_shopped_items = itemsCount;
+		}
+
+		completingShopping = false;
+		shoppingMode = false;
+	}
 </script>
 
 <svelte:head><title>Список покупок — MealPlaniX</title></svelte:head>
@@ -433,6 +479,14 @@
 							Сбросить
 						</button>
 					{/if}
+					<button class="btn-shop" onclick={() => (shoppingMode = true)} aria-label="Режим покупок">
+						<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+							<path d="M2 3h2l1.5 7h6L13 5H5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+							<circle cx="6" cy="12" r="1" fill="currentColor"/>
+							<circle cx="11" cy="12" r="1" fill="currentColor"/>
+						</svg>
+						В магазин
+					</button>
 					<button class="btn-export" onclick={exportCart}>
 						<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
 							<rect
@@ -460,6 +514,24 @@
 
 	<!-- ═══ КОНТЕНТ ══════════════════════════════════════════════════════════ -->
 	<div class="bd">
+		<!-- Баннер: последняя закупка -->
+		{#if household?.last_shopped_at}
+			<div class="shopped-banner">
+				<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+					<path d="M3 5l4 4 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+				</svg>
+				<span class="sb-text">
+					Последняя закупка: <strong>{formatShoppedDate(household.last_shopped_at)}</strong>
+					{#if household.last_shopped_items}
+						· {household.last_shopped_items} позиций
+					{/if}
+					{#if household.last_shopped_total_rub}
+						· {household.last_shopped_total_rub} ₽
+					{/if}
+				</span>
+			</div>
+		{/if}
+
 		<!-- Пустое состояние -->
 		{#if allGroups.length === 0}
 			<div class="empty">
@@ -901,6 +973,19 @@
 	</div>
 {/if}
 
+<!-- ═══ SHOPPING MODE OVERLAY (V5-100) ══════════════════════════════════════ -->
+{#if shoppingMode}
+	<ShoppingModeView
+		groups={allGroups}
+		{checked}
+		{prices}
+		onToggle={toggle}
+		onClose={() => (shoppingMode = false)}
+		onComplete={completeShopping}
+		completing={completingShopping}
+	/>
+{/if}
+
 <style>
 	/* ── PAGE ─────────────────────────────────────────────────────────── */
 	.pg {
@@ -1046,6 +1131,45 @@
 	}
 	.btn-export:hover {
 		background: var(--color-green-dark);
+	}
+
+	/* ── В магазин (shopping mode) ──────────────────────────────────── */
+	.btn-shop {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 5px 12px;
+		border-radius: var(--radius-sm);
+		border: 1px solid var(--color-green-primary);
+		background: transparent;
+		color: var(--color-green-primary);
+		font-size: 12px;
+		font-weight: 600;
+		font-family: inherit;
+		cursor: pointer;
+		transition: background var(--transition-fast), color var(--transition-fast);
+	}
+	.btn-shop:hover {
+		background: var(--color-green-tint);
+	}
+
+	/* ── Баннер: последняя закупка ─────────────────────────────────── */
+	.shopped-banner {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 14px;
+		background: var(--color-green-tint);
+		color: var(--color-green-primary);
+		border-radius: var(--radius-md);
+		font-size: 13px;
+	}
+	.shopped-banner .sb-text {
+		color: var(--color-text-primary);
+	}
+	.shopped-banner strong {
+		color: var(--color-text-primary);
+		font-weight: 600;
 	}
 
 	/* ── BODY ─────────────────────────────────────────────────────────── */

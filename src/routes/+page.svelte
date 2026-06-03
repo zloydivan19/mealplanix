@@ -2370,12 +2370,8 @@
 											style="text-align: right; padding: 6px 8px; font-weight: 600; color: var(--color-text-primary);"
 											>{totalProtein}г</td
 										>
-										{#if activePersona.protein_target}<td
-												style="text-align: right; color: var(--color-text-muted);"
-												>{activePersona.protein_target}г</td
-											>
-										{:else if target > 0}<td
-												style="text-align: right; color: var(--color-text-muted);">—</td
+										{#if target > 0}<td style="text-align: right; color: var(--color-text-muted);"
+												>{activePersona.protein_target ? `${activePersona.protein_target}г` : '—'}</td
 											>{/if}
 									</tr>
 									<tr style="border-top: 1px solid var(--color-border);">
@@ -2387,7 +2383,7 @@
 											>{totalFat}г</td
 										>
 										{#if target > 0}<td style="text-align: right; color: var(--color-text-muted);"
-												>—</td
+												>{activePersona.fat_target ? `${activePersona.fat_target}г` : '—'}</td
 											>{/if}
 									</tr>
 									<tr style="border-top: 1px solid var(--color-border);">
@@ -2399,7 +2395,7 @@
 											>{totalCarbs}г</td
 										>
 										{#if target > 0}<td style="text-align: right; color: var(--color-text-muted);"
-												>—</td
+												>{activePersona.carbs_target ? `${activePersona.carbs_target}г` : '—'}</td
 											>{/if}
 									</tr>
 								</tbody>

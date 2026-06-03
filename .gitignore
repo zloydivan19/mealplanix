@@ -31,5 +31,9 @@ vite.config.ts.timestamp-*
 # Dataset (large files, not for repo)
 dataset/
 
+# Food catalog Excel workbook (генерируется скриптом, не для репо)
+food-catalog*.xlsx
+~$*.xlsx
+
 # Superpowers brainstorming sessions
 .superpowers/

@@ -59,6 +59,16 @@
       </svg>`,
     },
     {
+      href: '/stats',
+      label: 'Статистика',
+      icon: `<svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <line x1="3" y1="19" x2="19" y2="19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        <rect x="5" y="11" width="3" height="6" rx="0.5" stroke="currentColor" stroke-width="1.8"/>
+        <rect x="9.5" y="7" width="3" height="10" rx="0.5" stroke="currentColor" stroke-width="1.8"/>
+        <rect x="14" y="3" width="3" height="14" rx="0.5" stroke="currentColor" stroke-width="1.8"/>
+      </svg>`,
+    },
+    {
       href: '/settings',
       label: 'Настройки',
       icon: `<svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">

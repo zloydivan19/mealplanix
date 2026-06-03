@@ -55,6 +55,9 @@ export interface Household {
 	invite_code: string;
 	carry_dinner_to_lunch: boolean;
 	created_at: string;
+	last_shopped_at:        string | null;
+	last_shopped_total_rub: number | null;
+	last_shopped_items:     number | null;
 }
 
 export interface HouseholdMember {

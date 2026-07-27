@@ -359,11 +359,11 @@ h3 {
 
 @media print {
 	.sb-panel {
-		display: none;
+		display: none !important;
 	}
 
 	.layout-wrap {
-		margin-left: 0;
+		margin-left: 0 !important;
 	}
 
 	:root,

@@ -104,33 +104,31 @@
 		width: 210mm;
 		min-height: 297mm;
 		margin: 0 auto 40px;
-		padding: 16mm;
+		padding: 14mm;
 		background: var(--color-bg-card);
 		box-shadow: var(--shadow-modal);
 		box-sizing: border-box;
-		display: flex;
-		flex-direction: column;
 	}
 
 	.brand {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 10px;
-		margin-bottom: 10px;
+		gap: 8px;
+		margin-bottom: 8px;
 	}
 	.brand-logo {
-		height: 40px;
-		width: 40px;
+		height: 34px;
+		width: 34px;
 		object-fit: contain;
-		border-radius: 8px;
+		border-radius: 7px;
 		mix-blend-mode: multiply;
 	}
 	.brand-spacer {
-		width: 40px;
+		width: 34px;
 	}
 	.brand-name {
-		font-size: 24px;
+		font-size: 19px;
 		font-weight: 800;
 		letter-spacing: -0.02em;
 	}
@@ -143,70 +141,66 @@
 
 	.sheet-title {
 		text-align: center;
-		font-size: 24px;
+		font-size: 18px;
 		font-weight: 700;
 		color: var(--color-text-primary);
-		margin: 6px 0 6px;
+		margin: 4px 0 4px;
 	}
 	.sheet-subtitle {
 		text-align: center;
-		font-size: 15px;
+		font-size: 13px;
 		color: var(--color-text-muted);
-		margin: 0 0 32px;
+		margin: 0 0 18px;
 	}
 
 	.days-grid {
 		display: flex;
-		gap: 32px;
-		flex: 1;
+		gap: 22px;
 	}
 	.days-col {
 		flex: 1;
 		min-width: 0;
-		display: flex;
-		flex-direction: column;
 	}
 
 	.day {
-		margin-bottom: 22px;
-		padding-top: 14px;
+		margin-bottom: 12px;
+		padding-top: 9px;
 		border-top: 1px dotted var(--color-border);
-		flex: 1;
 	}
 	.day:first-child {
 		padding-top: 0;
 		border-top: none;
 	}
 	.day-name {
-		font-size: 18px;
+		font-size: 14.5px;
 		font-weight: 700;
 		color: var(--color-text-primary);
-		margin-bottom: 8px;
+		margin-bottom: 4px;
 	}
 	.meal-line {
-		font-size: 15px;
-		line-height: 1.65;
+		font-size: 12.5px;
+		line-height: 1.45;
 		color: var(--color-text-primary);
-		margin: 0 0 4px;
+		margin: 0 0 2px;
 	}
 	.meal-label {
 		color: var(--color-text-muted);
 	}
 	.day-empty {
-		font-size: 15px;
+		font-size: 12.5px;
 		color: var(--color-text-muted);
 		margin: 0;
 	}
 	.day-totals {
-		font-size: 13px;
+		font-size: 11px;
 		color: var(--color-text-muted);
 		text-align: right;
-		margin: 8px 0 0;
+		margin: 4px 0 0;
 	}
 
 	.sunday-block {
-		margin-top: 24px;
-		padding-top: 18px;
+		margin-top: 14px;
+		padding-top: 11px;
 		border-top: 1px dotted var(--color-border);
 		max-width: 70%;
 		margin-left: auto;
@@ -222,10 +216,10 @@
 
 	.sheet-footer {
 		text-align: center;
-		font-size: 12px;
+		font-size: 9.5px;
 		color: var(--color-text-muted);
-		margin-top: 32px;
-		padding-top: 12px;
+		margin-top: 16px;
+		padding-top: 8px;
 		border-top: 1px solid var(--color-border);
 	}
 

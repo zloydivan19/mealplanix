@@ -29,6 +29,8 @@
 	import type { FridgeHint } from '$lib/utils/generate.js';
 	import { tick } from 'svelte';
 	import { browser } from '$app/environment';
+	import PrintMenu from '$lib/components/PrintMenu.svelte';
+	import { buildPrintDays } from '$lib/utils/print.js';
 
 	let { data } = $props<{ data: PageData }>();
 
@@ -40,6 +42,9 @@
 	let viewDayIdx = $state(
 		browser ? Math.max(0, Math.min(6, Number(localStorage.getItem('pm_day') ?? 0))) : 0
 	);
+
+	// ── Режим печати ────────────────────────────────────────────────────
+	let printMode = $state(false);
 
 	// ── Навигация по неделям (persist через localStorage) ─────────────────
 	let weekOffset = $state(browser ? Number(localStorage.getItem('pm_week') ?? 0) : 0);
@@ -107,6 +112,12 @@
 	// true только если активная персона принадлежит собственному хозяйству текущего пользователя
 	let canEdit = $derived(
 		!!activePersona && activePersona.household_id === page.data.ownHouseholdId
+	);
+
+	let printDays = $derived(
+		activePersona
+			? buildPrintDays(data.menuPlans as MenuPlanRow[], activePersona.id, weekId)
+			: []
 	);
 
 	function initials(name: string): string {
@@ -1141,6 +1152,14 @@
 <svelte:head><title>MealPlaniX — Планировщик меню</title></svelte:head>
 
 <div class="flex min-h-screen flex-col" style="background: var(--color-bg-page);">
+	{#if printMode && activePersona}
+		<PrintMenu
+			persona={activePersona}
+			weekLabel={weekLabel}
+			days={printDays}
+			onclose={() => (printMode = false)}
+		/>
+	{:else}
 	<!-- ── Переключатель персон ────────────────────────────────────────── -->
 	{#if personas.length > 0}
 		<div
@@ -1694,6 +1713,31 @@
 				{/if}
 			</div>
 			{/if}
+
+			<!-- Кнопка «Печать» -->
+			<button
+				type="button"
+				onclick={() => (printMode = true)}
+				disabled={!activePersona}
+				class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all"
+				style="
+					background: var(--color-bg-page);
+					border: 1px solid var(--color-border);
+					color: var(--color-text-muted);
+					opacity: {activePersona ? '1' : '0.5'};
+				"
+				onmouseenter={(e) => {
+					(e.currentTarget as HTMLElement).style.borderColor = 'var(--color-green-soft)';
+					(e.currentTarget as HTMLElement).style.color = 'var(--color-green-primary)';
+				}}
+				onmouseleave={(e) => {
+					(e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border)';
+					(e.currentTarget as HTMLElement).style.color = 'var(--color-text-muted)';
+				}}
+				aria-label="Печать меню"
+			>
+				🖨 Печать
+			</button>
 		</div>
 	</div>
 
@@ -2409,6 +2453,7 @@
 				</div>
 			</div>
 		</div>
+	{/if}
 	{/if}
 </div>
 

@@ -43,6 +43,7 @@
 	<div class="brand">
 		<img src="/logo1.jpg" alt="" class="brand-logo" />
 		<span class="brand-name"><span class="brand-main">MealPlani</span><span class="brand-accent">X</span></span>
+		<span class="brand-spacer" aria-hidden="true"></span>
 	</div>
 	<h2 class="sheet-title">Меню на неделю</h2>
 	<p class="sheet-subtitle">{weekLabel} · {persona.name}</p>
@@ -124,6 +125,9 @@
 		object-fit: contain;
 		border-radius: 8px;
 		mix-blend-mode: multiply;
+	}
+	.brand-spacer {
+		width: 40px;
 	}
 	.brand-name {
 		font-size: 24px;

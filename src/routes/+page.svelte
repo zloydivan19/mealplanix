@@ -114,12 +114,6 @@
 		!!activePersona && activePersona.household_id === page.data.ownHouseholdId
 	);
 
-	let printDays = $derived(
-		activePersona
-			? buildPrintDays(data.menuPlans as MenuPlanRow[], activePersona.id, weekId)
-			: []
-	);
-
 	function initials(name: string): string {
 		return name
 			.trim()
@@ -150,6 +144,12 @@
 		}
 		localPlans = map;
 	});
+
+	let printDays = $derived(
+		activePersona
+			? buildPrintDays(Array.from(localPlans.values()).flat(), activePersona.id, weekId)
+			: []
+	);
 
 	// ── MealModal ─────────────────────────────────────────────────────────
 	interface OpenSlot {

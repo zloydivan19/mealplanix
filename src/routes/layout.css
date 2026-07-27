@@ -350,3 +350,28 @@ h3 {
 		transition-duration: 0.01ms !important;
 	}
 }
+
+/* ─── Печать меню недели (PrintMenu) ────────────────────────────────── */
+@page {
+	size: A4;
+	margin: 12mm;
+}
+
+@media print {
+	.sb-panel {
+		display: none;
+	}
+
+	.layout-wrap {
+		margin-left: 0;
+	}
+
+	:root,
+	:root[data-theme='dark'] {
+		--color-bg-page: #f3f6f0;
+		--color-bg-card: #fafcf9;
+		--color-text-primary: #17201a;
+		--color-text-muted: #6b7568;
+		--color-border: #dde3d8;
+	}
+}
